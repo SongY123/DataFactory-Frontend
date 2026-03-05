@@ -3,7 +3,7 @@
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
       <div>
         <h4 class="mb-1">Data Preparation</h4>
-        <p class="text-muted mb-0">Register and govern datasets used for Data Agent supervised and preference training.</p>
+        <p class="text-muted mb-0">Upload datasets, view uploaded list, and inspect sample data.</p>
       </div>
       <button class="btn btn-outline-primary btn-sm" type="button" @click="refreshDatasets" :disabled="isLoading">
         <span v-if="isLoading" class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -19,7 +19,7 @@
       <div class="col-12 col-xl-5">
         <article class="card border-0 shadow-sm h-100">
           <div class="card-body">
-            <h6 class="card-title mb-3">Dataset Intake</h6>
+            <h6 class="card-title mb-3">Dataset Upload</h6>
             <form class="d-flex flex-column gap-2" @submit.prevent="submitDataset">
               <input v-model.trim="datasetForm.name" type="text" class="form-control" placeholder="Dataset name" required>
 
@@ -30,7 +30,7 @@
                 <option value="tool-trace">Tool Trace</option>
               </select>
 
-              <input v-model.trim="datasetForm.source" type="text" class="form-control" placeholder="Source URI (S3 / OSS / local)">
+              <input v-model.trim="datasetForm.source" type="text" class="form-control" placeholder="Source URI (optional)">
 
               <div class="row g-2">
                 <div class="col-6">
@@ -41,7 +41,13 @@
                   </select>
                 </div>
                 <div class="col-6">
-                  <input v-model.number="datasetForm.size" type="number" min="0" class="form-control" placeholder="Sample size">
+                  <input
+                    class="form-control"
+                    type="file"
+                    accept=".csv,.json,.jsonl,.txt"
+                    @change="onFileChange"
+                    required
+                  >
                 </div>
               </div>
 
@@ -54,7 +60,7 @@
 
               <button class="btn btn-primary" type="submit" :disabled="isSubmitting">
                 <span v-if="isSubmitting" class="spinner-border spinner-border-sm me-1" role="status"></span>
-                Register Dataset
+                Upload Dataset
               </button>
             </form>
           </div>
@@ -80,17 +86,17 @@
             <hr>
 
             <div class="small text-muted">
-              Suggested policy: only promote datasets with schema consistency ≥ 95% and annotation agreement ≥ 90%.
+              Suggested policy: only promote datasets with schema consistency >= 95% and annotation agreement >= 90%.
             </div>
           </div>
         </article>
       </div>
     </div>
 
-    <article class="card border-0 shadow-sm">
+    <article class="card border-0 shadow-sm mb-3">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between mb-2">
-          <h6 class="card-title mb-0">Dataset Registry</h6>
+          <h6 class="card-title mb-0">Uploaded Datasets</h6>
           <span class="badge text-bg-light">{{ datasetRows.length }} datasets</span>
         </div>
 
@@ -101,21 +107,64 @@
               <th>Name</th>
               <th>Type</th>
               <th>Language</th>
-              <th>Samples</th>
+              <th>Size</th>
               <th>Status</th>
               <th>Updated At</th>
             </tr>
             </thead>
             <tbody>
-            <tr v-for="row in datasetRows" :key="row.id">
+            <tr
+              v-for="row in datasetRows"
+              :key="row.id"
+              class="dataset-row"
+              :class="{ active: selectedDatasetId === row.id }"
+              @click="openDatasetDetail(row.id)"
+            >
               <td>{{ row.name }}</td>
               <td>{{ row.type }}</td>
               <td>{{ row.language }}</td>
-              <td>{{ row.size }}</td>
+              <td>{{ formatSize(row.size) }}</td>
               <td>
                 <span class="badge" :class="statusClass(row.status)">{{ row.status }}</span>
               </td>
               <td>{{ row.updatedAt }}</td>
+            </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <article v-if="selectedDataset" class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h6 class="card-title mb-0">Dataset Detail</h6>
+          <span class="badge text-bg-primary">{{ selectedDataset.name }}</span>
+        </div>
+
+        <div class="row g-2 small mb-3">
+          <div class="col-6 col-lg-3"><strong>ID:</strong> {{ selectedDataset.id }}</div>
+          <div class="col-6 col-lg-3"><strong>Type:</strong> {{ selectedDataset.type }}</div>
+          <div class="col-6 col-lg-3"><strong>Language:</strong> {{ selectedDataset.language }}</div>
+          <div class="col-6 col-lg-3"><strong>Size:</strong> {{ formatSize(selectedDataset.size) }}</div>
+          <div class="col-12"><strong>Source:</strong> {{ selectedDataset.source || '-' }}</div>
+          <div class="col-12"><strong>Note:</strong> {{ selectedDataset.note || '-' }}</div>
+        </div>
+
+        <h6 class="mb-2">Sample Data</h6>
+        <div v-if="sampleRows.length === 0" class="text-muted small">No sample data.</div>
+        <div v-else class="table-responsive">
+          <table class="table table-sm table-bordered align-middle mb-0">
+            <thead class="table-light">
+            <tr>
+              <th style="width: 50px;">#</th>
+              <th>Content</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr v-for="(sample, index) in sampleRows" :key="index">
+              <td>{{ index + 1 }}</td>
+              <td><pre class="sample-pre">{{ stringifySample(sample) }}</pre></td>
             </tr>
             </tbody>
           </table>
@@ -127,48 +176,24 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { createDataset, fetchDatasets } from '../../api/dataAgent'
+import { createDataset, fetchDatasetDetail, fetchDatasets, uploadDataset } from '../../api/dataAgent'
 
 const isLoading = ref(false)
 const isSubmitting = ref(false)
 const notice = ref('')
 
-const datasetRows = ref([
-  {
-    id: 'ds-001',
-    name: 'agent_dialog_zh_v3',
-    type: 'conversation',
-    language: 'zh',
-    size: 14200,
-    status: 'ready',
-    updatedAt: '2026-03-04 09:20'
-  },
-  {
-    id: 'ds-002',
-    name: 'tool_trace_sft_v2',
-    type: 'tool-trace',
-    language: 'multi',
-    size: 8900,
-    status: 'reviewing',
-    updatedAt: '2026-03-03 22:14'
-  },
-  {
-    id: 'ds-003',
-    name: 'eval_hard_cases_v1',
-    type: 'evaluation',
-    language: 'en',
-    size: 1200,
-    status: 'draft',
-    updatedAt: '2026-03-02 18:45'
-  }
-])
+const selectedDatasetId = ref(null)
+const selectedDataset = ref(null)
+const sampleRows = ref([])
+const selectedFile = ref(null)
+
+const datasetRows = ref([])
 
 const datasetForm = ref({
   name: '',
   type: 'instruction',
   source: '',
   language: 'zh',
-  size: 0,
   note: ''
 })
 
@@ -183,8 +208,18 @@ const statusClass = (status) => {
   if (status === 'ready') return 'bg-success-subtle text-success-emphasis'
   if (status === 'reviewing') return 'bg-warning-subtle text-warning-emphasis'
   if (status === 'draft') return 'bg-secondary-subtle text-secondary-emphasis'
+  if (status === 'uploaded') return 'bg-primary-subtle text-primary-emphasis'
   return 'bg-light text-dark'
 }
+
+const formatSize = (size) => {
+  const n = Number(size || 0)
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`
+}
+
+const stringifySample = (sample) => JSON.stringify(sample, null, 2)
 
 const mapDatasets = (raw) => {
   const list = Array.isArray(raw?.data)
@@ -198,14 +233,21 @@ const mapDatasets = (raw) => {
   return list
     .filter((item) => item && typeof item === 'object')
     .map((item, index) => ({
-      id: String(item.id || item.dataset_id || `dataset-${index + 1}`),
+      id: Number(item.id || item.dataset_id || index + 1),
       name: String(item.name || item.dataset_name || 'unknown'),
       type: String(item.type || item.dataset_type || 'instruction'),
       language: String(item.language || item.lang || 'multi'),
       size: Number(item.size || item.sample_count || 0),
       status: String(item.status || 'draft'),
-      updatedAt: String(item.updated_at || item.update_time || '-')
+      source: String(item.source || ''),
+      note: String(item.note || ''),
+      updatedAt: String(item.update_time || item.updated_at || '-')
     }))
+}
+
+const onFileChange = (event) => {
+  const files = event?.target?.files
+  selectedFile.value = files && files.length > 0 ? files[0] : null
 }
 
 const refreshDatasets = async () => {
@@ -215,37 +257,71 @@ const refreshDatasets = async () => {
   try {
     const response = await fetchDatasets()
     const normalized = mapDatasets(response)
-    if (normalized.length > 0) {
-      datasetRows.value = normalized
+    datasetRows.value = normalized
+
+    if (normalized.length > 0 && selectedDatasetId.value == null) {
+      await openDatasetDetail(normalized[0].id)
     }
   } catch (error) {
-    notice.value = `Backend unavailable, showing mock registry. (${error?.message || 'unknown error'})`
+    notice.value = `Backend unavailable. (${error?.message || 'unknown error'})`
   } finally {
     isLoading.value = false
   }
 }
 
+const openDatasetDetail = async (datasetId) => {
+  selectedDatasetId.value = datasetId
+  const row = datasetRows.value.find((item) => item.id === datasetId)
+
+  try {
+    const response = await fetchDatasetDetail(datasetId)
+    const detail = response?.data || response
+    selectedDataset.value = {
+      id: detail?.id ?? row?.id,
+      name: detail?.name ?? row?.name,
+      type: detail?.type ?? row?.type,
+      language: detail?.language ?? row?.language,
+      size: Number(detail?.size ?? row?.size ?? 0),
+      source: detail?.source ?? row?.source ?? '',
+      note: detail?.note ?? row?.note ?? ''
+    }
+    sampleRows.value = Array.isArray(detail?.sample_data) ? detail.sample_data : []
+  } catch {
+    selectedDataset.value = row || null
+    sampleRows.value = []
+  }
+}
+
 const submitDataset = async () => {
   if (!datasetForm.value.name) return
+  if (!selectedFile.value) {
+    notice.value = 'Please select a dataset file.'
+    return
+  }
+
   isSubmitting.value = true
   notice.value = ''
 
-  const optimisticRow = {
-    id: `temp-${Date.now()}`,
-    name: datasetForm.value.name,
-    type: datasetForm.value.type,
-    language: datasetForm.value.language,
-    size: Number(datasetForm.value.size || 0),
-    status: 'draft',
-    updatedAt: new Date().toLocaleString()
-  }
-
-  datasetRows.value.unshift(optimisticRow)
-
   try {
-    await createDataset({ ...datasetForm.value })
-  } catch (error) {
-    notice.value = `Dataset registered locally only. (${error?.message || 'backend error'})`
+    const formData = new FormData()
+    formData.append('file', selectedFile.value)
+    formData.append('name', datasetForm.value.name)
+    formData.append('type', datasetForm.value.type)
+    formData.append('language', datasetForm.value.language)
+    formData.append('source', datasetForm.value.source || '')
+    formData.append('note', datasetForm.value.note || '')
+
+    await uploadDataset(formData)
+  } catch (uploadError) {
+    try {
+      await createDataset({
+        ...datasetForm.value,
+        size: 0,
+        sample_data: []
+      })
+    } catch (createError) {
+      notice.value = `Upload failed. (${createError?.message || uploadError?.message || 'unknown error'})`
+    }
   } finally {
     isSubmitting.value = false
     datasetForm.value = {
@@ -253,9 +329,10 @@ const submitDataset = async () => {
       type: 'instruction',
       source: '',
       language: 'zh',
-      size: 0,
       note: ''
     }
+    selectedFile.value = null
+    await refreshDatasets()
   }
 }
 
@@ -270,4 +347,19 @@ onMounted(() => {
   flex-direction: column;
   gap: 0.5rem;
 }
+
+.dataset-row {
+  cursor: pointer;
+}
+
+.dataset-row.active {
+  --bs-table-bg: #f0f8ff;
+}
+
+.sample-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 </style>
+

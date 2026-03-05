@@ -39,6 +39,13 @@ export const createDataset = (payload) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
+export const fetchDatasetDetail = (datasetId) => request(`/datasets/${datasetId}`)
+
+export const uploadDataset = (formData) =>
+  request('/datasets/upload', {
+    method: 'POST',
+    body: formData
+  })
 
 export const fetchProcessingJobs = () => request('/processing/jobs')
 
@@ -73,3 +80,4 @@ export const postAgentMessage = (payload) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
+
