@@ -15,92 +15,31 @@
       {{ notice }}
     </div>
 
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-xl-5">
-        <article class="card border-0 shadow-sm h-100">
-          <div class="card-body">
-            <h6 class="card-title mb-3">Dataset Upload</h6>
-            <form class="d-flex flex-column gap-2" @submit.prevent="submitDataset">
-              <input v-model.trim="datasetForm.name" type="text" class="form-control" placeholder="Dataset name" required>
-
-              <select v-model="datasetForm.type" class="form-select" required>
-                <option value="instruction">Instruction</option>
-                <option value="conversation">Conversation</option>
-                <option value="evaluation">Evaluation</option>
-                <option value="tool-trace">Tool Trace</option>
-              </select>
-
-              <input v-model.trim="datasetForm.source" type="text" class="form-control" placeholder="Source URI (optional)">
-
-              <div class="row g-2">
-                <div class="col-6">
-                  <select v-model="datasetForm.language" class="form-select">
-                    <option value="zh">Chinese</option>
-                    <option value="en">English</option>
-                    <option value="multi">Multilingual</option>
-                  </select>
-                </div>
-                <div class="col-6">
-                  <input
-                    class="form-control"
-                    type="file"
-                    accept=".csv,.json,.jsonl,.txt"
-                    @change="onFileChange"
-                    required
-                  >
-                </div>
-              </div>
-
-              <textarea
-                v-model.trim="datasetForm.note"
-                class="form-control"
-                rows="3"
-                placeholder="Description / labeling protocol / source constraints"
-              ></textarea>
-
-              <button class="btn btn-primary" type="submit" :disabled="isSubmitting">
-                <span v-if="isSubmitting" class="spinner-border spinner-border-sm me-1" role="status"></span>
-                Upload Dataset
-              </button>
-            </form>
-          </div>
-        </article>
+    <article class="card border-0 shadow-sm mb-3">
+      <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+          <h6 class="card-title mb-1">Dataset Upload</h6>
+          <p class="text-muted small mb-0">Click to open upload form in a modal.</p>
+        </div>
+        <button class="btn btn-primary" type="button" @click="openUploadModal">
+          Upload Dataset
+        </button>
       </div>
-
-      <div class="col-12 col-xl-7">
-        <article class="card border-0 shadow-sm h-100">
-          <div class="card-body">
-            <h6 class="card-title mb-3">Quality Gate</h6>
-            <div class="d-flex flex-column gap-3">
-              <div v-for="item in qualityChecks" :key="item.key">
-                <div class="d-flex align-items-center justify-content-between small mb-1">
-                  <span>{{ item.label }}</span>
-                  <span class="fw-semibold">{{ item.value }}%</span>
-                </div>
-                <div class="progress" role="progressbar" :aria-valuenow="item.value" aria-valuemin="0" aria-valuemax="100">
-                  <div class="progress-bar" :style="{ width: `${item.value}%` }"></div>
-                </div>
-              </div>
-            </div>
-
-            <hr>
-
-            <div class="small text-muted">
-              Suggested policy: only promote datasets with schema consistency >= 95% and annotation agreement >= 90%.
-            </div>
-          </div>
-        </article>
-      </div>
-    </div>
+    </article>
 
     <article class="card border-0 shadow-sm mb-3">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between mb-2">
           <h6 class="card-title mb-0">Uploaded Datasets</h6>
-          <span class="badge text-bg-light">{{ datasetRows.length }} datasets</span>
+          <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-outline-secondary btn-sm" type="button" @click="toggleViewMode">
+              {{ viewMode === 'list' ? 'Switch to Card View' : 'Switch to List View' }}
+            </button>
+            <span class="badge text-bg-light">{{ datasetRows.length }} datasets</span>
+          </div>
         </div>
 
-        <div class="table-responsive">
+        <div v-if="viewMode === 'list'" class="table-responsive">
           <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
             <tr>
@@ -110,6 +49,7 @@
               <th>Size</th>
               <th>Status</th>
               <th>Updated At</th>
+              <th style="width: 300px;">Actions</th>
             </tr>
             </thead>
             <tbody>
@@ -128,10 +68,103 @@
                 <span class="badge" :class="statusClass(row.status)">{{ row.status }}</span>
               </td>
               <td>{{ row.updatedAt }}</td>
+              <td>
+                <div class="d-flex gap-2">
+                  <button class="btn btn-outline-secondary btn-sm" type="button" @click.stop="openSampleDetail(row)">Sample Detail</button>
+                  <button class="btn btn-outline-primary btn-sm" type="button" @click.stop="startEditDataset(row)">Edit</button>
+                  <button class="btn btn-outline-danger btn-sm" type="button" @click.stop="removeDataset(row)">Delete</button>
+                </div>
+              </td>
             </tr>
             </tbody>
           </table>
         </div>
+
+        <div v-else class="row g-3">
+          <div v-for="row in datasetRows" :key="`card-${row.id}`" class="col-12 col-md-6 col-xl-4">
+            <article
+              class="card h-100 dataset-card"
+              :class="{ active: selectedDatasetId === row.id }"
+              @click="openDatasetDetail(row.id)"
+            >
+              <img
+                v-if="row.cover"
+                :src="row.cover"
+                class="card-img-top dataset-cover"
+                :alt="`${row.name} cover`"
+              >
+              <div v-else class="dataset-cover-placeholder">No Cover</div>
+              <div class="card-body">
+                <h6 class="card-title mb-1">{{ row.name }}</h6>
+                <p class="small text-muted mb-2">{{ row.type }} | {{ row.language }}</p>
+                <div class="d-flex align-items-center justify-content-between small mb-2">
+                  <span>{{ formatSize(row.size) }}</span>
+                  <span class="badge" :class="statusClass(row.status)">{{ row.status }}</span>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button class="btn btn-outline-secondary btn-sm" type="button" @click.stop="openSampleDetail(row)">Sample Detail</button>
+                  <button class="btn btn-outline-primary btn-sm" type="button" @click.stop="startEditDataset(row)">Edit</button>
+                  <button class="btn btn-outline-danger btn-sm" type="button" @click.stop="removeDataset(row)">Delete</button>
+                </div>
+              </div>
+              <div class="card-footer bg-transparent border-0 pt-0 small text-muted">
+                Updated: {{ row.updatedAt }}
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article v-if="editingDatasetId !== null" class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h6 class="card-title mb-0">Edit Dataset</h6>
+          <span class="badge text-bg-light">ID {{ editingDatasetId }}</span>
+        </div>
+
+        <form class="row g-2" @submit.prevent="saveDatasetEdit">
+          <div class="col-12 col-md-6">
+            <input v-model.trim="editForm.name" type="text" class="form-control" placeholder="Dataset name" required>
+          </div>
+          <div class="col-6 col-md-3">
+            <select v-model="editForm.type" class="form-select" required>
+              <option value="instruction">Instruction</option>
+              <option value="conversation">Conversation</option>
+              <option value="evaluation">Evaluation</option>
+              <option value="tool-trace">Tool Trace</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <select v-model="editForm.language" class="form-select" required>
+              <option value="zh">Chinese</option>
+              <option value="en">English</option>
+              <option value="multi">Multilingual</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <input v-model.trim="editForm.source" type="text" class="form-control" placeholder="Source URI (optional)">
+          </div>
+          <div class="col-12">
+            <textarea
+              v-model.trim="editForm.note"
+              class="form-control"
+              rows="2"
+              placeholder="Description / labeling protocol / source constraints"
+            ></textarea>
+          </div>
+          <div class="col-12 col-md-8">
+            <input class="form-control" type="file" accept="image/*" @change="onEditCoverChange" ref="editCoverInputRef">
+            <div class="small text-muted mt-1">New cover: {{ editCoverLabel }}</div>
+          </div>
+          <div class="col-12 col-md-4 d-flex align-items-end justify-content-md-end gap-2">
+            <button class="btn btn-outline-secondary" type="button" @click="cancelEdit">Cancel</button>
+            <button class="btn btn-primary" type="submit" :disabled="isSavingEdit">
+              <span v-if="isSavingEdit" class="spinner-border spinner-border-sm me-1" role="status"></span>
+              Save
+            </button>
+          </div>
+        </form>
       </div>
     </article>
 
@@ -151,43 +184,176 @@
           <div class="col-12"><strong>Note:</strong> {{ selectedDataset.note || '-' }}</div>
         </div>
 
-        <h6 class="mb-2">Sample Data</h6>
-        <div v-if="sampleRows.length === 0" class="text-muted small">No sample data.</div>
-        <div v-else class="table-responsive">
-          <table class="table table-sm table-bordered align-middle mb-0">
-            <thead class="table-light">
-            <tr>
-              <th style="width: 50px;">#</th>
-              <th>Content</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr v-for="(sample, index) in sampleRows" :key="index">
-              <td>{{ index + 1 }}</td>
-              <td><pre class="sample-pre">{{ stringifySample(sample) }}</pre></td>
-            </tr>
-            </tbody>
-          </table>
+        <div class="d-flex justify-content-end">
+          <button class="btn btn-outline-secondary btn-sm" type="button" @click="openSampleDetail(selectedDataset)">
+            View Sample Data
+          </button>
         </div>
       </div>
     </article>
+
+    <div class="modal fade" tabindex="-1" ref="uploadModalRef" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title mb-0">Dataset Upload</h6>
+            <button type="button" class="btn-close" @click="closeUploadModal"></button>
+          </div>
+          <div class="modal-body">
+            <form class="d-flex flex-column gap-2" @submit.prevent="submitDataset">
+              <input v-model.trim="datasetForm.name" type="text" class="form-control" placeholder="Dataset name" required>
+
+              <select v-model="datasetForm.type" class="form-select" required>
+                <option value="instruction">Instruction</option>
+                <option value="conversation">Conversation</option>
+                <option value="evaluation">Evaluation</option>
+                <option value="tool-trace">Tool Trace</option>
+              </select>
+
+              <input v-model.trim="datasetForm.source" type="text" class="form-control" placeholder="Source URI (optional)">
+
+              <div class="row g-2">
+                <div class="col-12 col-md-6">
+                  <select v-model="datasetForm.language" class="form-select">
+                    <option value="zh">Chinese</option>
+                    <option value="en">English</option>
+                    <option value="multi">Multilingual</option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-6">
+                  <input
+                    class="form-control"
+                    type="file"
+                    accept=".csv,.json,.jsonl,.txt,.zip"
+                    multiple
+                    webkitdirectory
+                    directory
+                    @change="onDatasetFilesChange"
+                    ref="datasetFilesInputRef"
+                    required
+                  >
+                </div>
+              </div>
+              <div class="small text-muted">
+                Dataset folder: {{ selectedFolderLabel }}
+              </div>
+
+              <div>
+                <input
+                  class="form-control"
+                  type="file"
+                  accept="image/*"
+                  @change="onCoverFileChange"
+                  ref="coverFileInputRef"
+                >
+              </div>
+              <div class="small text-muted">
+                Cover image: {{ selectedCoverLabel }}
+              </div>
+
+              <textarea
+                v-model.trim="datasetForm.note"
+                class="form-control"
+                rows="3"
+                placeholder="Description / labeling protocol / source constraints"
+              ></textarea>
+
+              <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-outline-secondary" type="button" @click="closeUploadModal">Cancel</button>
+                <button class="btn btn-primary" type="submit" :disabled="isSubmitting">
+                  <span v-if="isSubmitting" class="spinner-border spinner-border-sm me-1" role="status"></span>
+                  Upload Dataset
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" tabindex="-1" ref="sampleModalRef" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title mb-0">Sample Data - {{ sampleDetailDatasetName || 'Dataset' }}</h6>
+            <button type="button" class="btn-close" @click="closeSampleModal"></button>
+          </div>
+          <div class="modal-body">
+            <div v-if="isLoadingSampleDetail" class="d-flex align-items-center gap-2 text-muted">
+              <span class="spinner-border spinner-border-sm" role="status"></span>
+              <span>Loading sample data...</span>
+            </div>
+            <div v-else-if="sampleDetailRows.length === 0" class="text-muted small">No sample data.</div>
+            <div v-else class="table-responsive">
+              <table class="table table-sm table-bordered align-middle mb-0">
+                <thead class="table-light">
+                <tr>
+                  <th style="width: 50px;">#</th>
+                  <th>Content</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr v-for="(sample, index) in sampleDetailRows" :key="index">
+                  <td>{{ index + 1 }}</td>
+                  <td><pre class="sample-pre">{{ stringifySample(sample) }}</pre></td>
+                </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" type="button" @click="closeSampleModal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { createDataset, fetchDatasetDetail, fetchDatasets, uploadDataset } from '../../api/dataAgent'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Modal } from 'bootstrap'
+import {
+  createDataset,
+  deleteDataset,
+  fetchDatasetDetail,
+  fetchDatasets,
+  updateDataset,
+  updateDatasetCover,
+  uploadDataset
+} from '../../api/dataAgent'
 
 const isLoading = ref(false)
 const isSubmitting = ref(false)
+const isSavingEdit = ref(false)
+const isLoadingSampleDetail = ref(false)
 const notice = ref('')
 
 const selectedDatasetId = ref(null)
 const selectedDataset = ref(null)
-const sampleRows = ref([])
-const selectedFile = ref(null)
+const sampleDetailRows = ref([])
+const sampleDetailDatasetName = ref('')
+const selectedDatasetFiles = ref([])
+const selectedCoverFile = ref(null)
+const editCoverFile = ref(null)
+const datasetFilesInputRef = ref(null)
+const coverFileInputRef = ref(null)
+const editCoverInputRef = ref(null)
+const uploadModalRef = ref(null)
+const sampleModalRef = ref(null)
+const viewMode = ref('list')
+let uploadModalInstance = null
+let sampleModalInstance = null
 
 const datasetRows = ref([])
+const editingDatasetId = ref(null)
+const editForm = ref({
+  name: '',
+  type: 'instruction',
+  source: '',
+  language: 'zh',
+  note: ''
+})
 
 const datasetForm = ref({
   name: '',
@@ -196,13 +362,6 @@ const datasetForm = ref({
   language: 'zh',
   note: ''
 })
-
-const qualityChecks = ref([
-  { key: 'schema', label: 'Schema consistency', value: 96 },
-  { key: 'dedupe', label: 'Duplicate rate control', value: 93 },
-  { key: 'safety', label: 'Safety annotation coverage', value: 91 },
-  { key: 'agreement', label: 'Annotation agreement', value: 88 }
-])
 
 const statusClass = (status) => {
   if (status === 'ready') return 'bg-success-subtle text-success-emphasis'
@@ -241,13 +400,71 @@ const mapDatasets = (raw) => {
       status: String(item.status || 'draft'),
       source: String(item.source || ''),
       note: String(item.note || ''),
+      cover: String(item.cover_url || item.cover || item.cover_path || item.thumbnail || ''),
       updatedAt: String(item.update_time || item.updated_at || '-')
     }))
 }
 
-const onFileChange = (event) => {
+const onDatasetFilesChange = (event) => {
   const files = event?.target?.files
-  selectedFile.value = files && files.length > 0 ? files[0] : null
+  selectedDatasetFiles.value = files ? Array.from(files) : []
+}
+
+const onCoverFileChange = (event) => {
+  const files = event?.target?.files
+  selectedCoverFile.value = files && files.length > 0 ? files[0] : null
+}
+
+const onEditCoverChange = (event) => {
+  const files = event?.target?.files
+  editCoverFile.value = files && files.length > 0 ? files[0] : null
+}
+
+const selectedFolderLabel = computed(() => {
+  if (selectedDatasetFiles.value.length === 0) return 'No folder selected'
+  const first = selectedDatasetFiles.value[0]?.webkitRelativePath || selectedDatasetFiles.value[0]?.name || ''
+  const folderName = first.includes('/') ? first.split('/')[0] : 'selected files'
+  return `${folderName} (${selectedDatasetFiles.value.length} files)`
+})
+
+const selectedCoverLabel = computed(() => selectedCoverFile.value?.name || 'No cover selected')
+const editCoverLabel = computed(() => editCoverFile.value?.name || 'No new cover selected')
+
+const toggleViewMode = () => {
+  viewMode.value = viewMode.value === 'list' ? 'card' : 'list'
+}
+
+const resetUploadInputs = () => {
+  if (datasetFilesInputRef.value) datasetFilesInputRef.value.value = ''
+  if (coverFileInputRef.value) coverFileInputRef.value.value = ''
+}
+
+const getUploadModal = () => {
+  if (!uploadModalRef.value) return null
+  uploadModalInstance = Modal.getOrCreateInstance(uploadModalRef.value)
+  return uploadModalInstance
+}
+
+const getSampleModal = () => {
+  if (!sampleModalRef.value) return null
+  sampleModalInstance = Modal.getOrCreateInstance(sampleModalRef.value)
+  return sampleModalInstance
+}
+
+const openUploadModal = () => {
+  getUploadModal()?.show()
+}
+
+const closeUploadModal = () => {
+  getUploadModal()?.hide()
+}
+
+const openSampleModal = () => {
+  getSampleModal()?.show()
+}
+
+const closeSampleModal = () => {
+  getSampleModal()?.hide()
 }
 
 const refreshDatasets = async () => {
@@ -259,9 +476,17 @@ const refreshDatasets = async () => {
     const normalized = mapDatasets(response)
     datasetRows.value = normalized
 
-    if (normalized.length > 0 && selectedDatasetId.value == null) {
-      await openDatasetDetail(normalized[0].id)
+    if (normalized.length === 0) {
+      selectedDatasetId.value = null
+      selectedDataset.value = null
+      return
     }
+
+    const stillExists = normalized.some((item) => item.id === selectedDatasetId.value)
+    if (!stillExists) {
+      selectedDatasetId.value = normalized[0].id
+    }
+    await openDatasetDetail(selectedDatasetId.value)
   } catch (error) {
     notice.value = `Backend unavailable. (${error?.message || 'unknown error'})`
   } finally {
@@ -270,6 +495,7 @@ const refreshDatasets = async () => {
 }
 
 const openDatasetDetail = async (datasetId) => {
+  if (!datasetId) return
   selectedDatasetId.value = datasetId
   const row = datasetRows.value.find((item) => item.id === datasetId)
 
@@ -285,26 +511,64 @@ const openDatasetDetail = async (datasetId) => {
       source: detail?.source ?? row?.source ?? '',
       note: detail?.note ?? row?.note ?? ''
     }
-    sampleRows.value = Array.isArray(detail?.sample_data) ? detail.sample_data : []
   } catch {
     selectedDataset.value = row || null
-    sampleRows.value = []
   }
+}
+
+const openSampleDetail = async (row) => {
+  if (!row?.id) return
+
+  sampleDetailDatasetName.value = row.name || `ID ${row.id}`
+  sampleDetailRows.value = []
+  isLoadingSampleDetail.value = true
+  openSampleModal()
+
+  try {
+    const response = await fetchDatasetDetail(row.id)
+    const detail = response?.data || response
+    sampleDetailRows.value = Array.isArray(detail?.sample_data) ? detail.sample_data : []
+  } catch (error) {
+    notice.value = `Load sample failed. (${error?.message || 'unknown error'})`
+  } finally {
+    isLoadingSampleDetail.value = false
+  }
+}
+
+const resetDatasetForm = () => {
+  datasetForm.value = {
+    name: '',
+    type: 'instruction',
+    source: '',
+    language: 'zh',
+    note: ''
+  }
+  selectedDatasetFiles.value = []
+  selectedCoverFile.value = null
+  resetUploadInputs()
 }
 
 const submitDataset = async () => {
   if (!datasetForm.value.name) return
-  if (!selectedFile.value) {
-    notice.value = 'Please select a dataset file.'
+  if (selectedDatasetFiles.value.length === 0) {
+    notice.value = 'Please select a dataset folder.'
     return
   }
 
   isSubmitting.value = true
   notice.value = ''
+  let uploadSucceeded = false
 
   try {
     const formData = new FormData()
-    formData.append('file', selectedFile.value)
+    selectedDatasetFiles.value.forEach((file, index) => {
+      formData.append('files', file, file.webkitRelativePath || file.name)
+      if (index === 0) formData.append('file', file, file.name)
+    })
+    if (selectedCoverFile.value) {
+      formData.append('cover', selectedCoverFile.value, selectedCoverFile.value.name)
+    }
+
     formData.append('name', datasetForm.value.name)
     formData.append('type', datasetForm.value.type)
     formData.append('language', datasetForm.value.language)
@@ -312,6 +576,7 @@ const submitDataset = async () => {
     formData.append('note', datasetForm.value.note || '')
 
     await uploadDataset(formData)
+    uploadSucceeded = true
   } catch (uploadError) {
     try {
       await createDataset({
@@ -319,25 +584,91 @@ const submitDataset = async () => {
         size: 0,
         sample_data: []
       })
+      uploadSucceeded = true
     } catch (createError) {
       notice.value = `Upload failed. (${createError?.message || uploadError?.message || 'unknown error'})`
     }
   } finally {
     isSubmitting.value = false
-    datasetForm.value = {
-      name: '',
-      type: 'instruction',
-      source: '',
-      language: 'zh',
-      note: ''
-    }
-    selectedFile.value = null
+  }
+
+  if (uploadSucceeded) {
+    closeUploadModal()
+    resetDatasetForm()
     await refreshDatasets()
+  }
+}
+
+const startEditDataset = (row) => {
+  editingDatasetId.value = row.id
+  editForm.value = {
+    name: row.name || '',
+    type: row.type || 'instruction',
+    source: row.source || '',
+    language: row.language || 'multi',
+    note: row.note || ''
+  }
+  editCoverFile.value = null
+  if (editCoverInputRef.value) editCoverInputRef.value.value = ''
+}
+
+const cancelEdit = () => {
+  editingDatasetId.value = null
+  editCoverFile.value = null
+  if (editCoverInputRef.value) editCoverInputRef.value.value = ''
+}
+
+const saveDatasetEdit = async () => {
+  if (!editingDatasetId.value) return
+
+  isSavingEdit.value = true
+  notice.value = ''
+
+  try {
+    await updateDataset(editingDatasetId.value, {
+      name: editForm.value.name,
+      type: editForm.value.type,
+      language: editForm.value.language,
+      source: editForm.value.source || null,
+      note: editForm.value.note || null
+    })
+
+    if (editCoverFile.value) {
+      await updateDatasetCover(editingDatasetId.value, editCoverFile.value)
+    }
+
+    cancelEdit()
+    await refreshDatasets()
+  } catch (error) {
+    notice.value = `Update failed. (${error?.message || 'unknown error'})`
+  } finally {
+    isSavingEdit.value = false
+  }
+}
+
+const removeDataset = async (row) => {
+  const yes = window.confirm(`Delete dataset "${row.name}"? This action cannot be undone.`)
+  if (!yes) return
+
+  notice.value = ''
+  try {
+    await deleteDataset(row.id)
+    if (editingDatasetId.value === row.id) {
+      cancelEdit()
+    }
+    await refreshDatasets()
+  } catch (error) {
+    notice.value = `Delete failed. (${error?.message || 'unknown error'})`
   }
 }
 
 onMounted(() => {
   refreshDatasets()
+})
+
+onBeforeUnmount(() => {
+  uploadModalInstance?.dispose()
+  sampleModalInstance?.dispose()
 })
 </script>
 
@@ -356,10 +687,39 @@ onMounted(() => {
   --bs-table-bg: #f0f8ff;
 }
 
+.dataset-card {
+  cursor: pointer;
+  border: 1px solid #e9ecef;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.dataset-card:hover {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.dataset-card.active {
+  border-color: #0d6efd;
+}
+
+.dataset-cover {
+  height: 150px;
+  object-fit: cover;
+}
+
+.dataset-cover-placeholder {
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8f9fa;
+  color: #6c757d;
+  font-size: 0.875rem;
+}
+
 .sample-pre {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
 }
 </style>
-
