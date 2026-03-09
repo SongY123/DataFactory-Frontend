@@ -73,3 +73,16 @@ export const postAgentMessage = (payload) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
+
+export const fetchAgenticSynthesisTasks = (limit = 20) =>
+  request(`/agentic-synthesis/tasks?limit=${encodeURIComponent(limit)}`)
+
+export const fetchAgenticSynthesisTask = (taskId) =>
+  request(`/agentic-synthesis/tasks/${encodeURIComponent(taskId)}`)
+
+export const createAgenticSynthesisTask = (payload) =>
+  request('/agentic-synthesis/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })

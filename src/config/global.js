@@ -33,5 +33,11 @@ export const workflowModules = [
     to: '/agent-interaction',
     label: 'Agent Interaction',
     description: 'Validate agent responses with real conversation loops.'
+  },
+  {
+    name: 'AgenticDataSynthesis',
+    to: '/agentic-data-synthesis',
+    label: 'Agentic Data Synthesis',
+    description: 'Generate synthesized datasets and track task progress.'
   }
 ]
