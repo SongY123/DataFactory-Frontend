@@ -1,9 +1,9 @@
-﻿<template>
+<template>
   <div class="module-page h-100">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
       <div>
         <h4 class="mb-1">Agent Interaction</h4>
-        <p class="text-muted mb-0">上传文件后可按 API 或 Local 模式调用模型生成报告，并通过提示词多轮修订。</p>
+        <p class="text-muted mb-0">File and Model workspaces use fixed size with scrollable content.</p>
       </div>
       <button class="btn btn-outline-secondary btn-sm" type="button" @click="resetSession" :disabled="isBusy">
         Clear Session
@@ -15,71 +15,70 @@
     <article class="card border-0 shadow-sm mb-3">
       <div class="card-body">
         <div class="row g-3">
-          <div class="col-12 col-lg-4">
-            <label class="form-label small fw-semibold">File</label>
-            <input class="form-control" type="file" @change="onFileChange" :disabled="isBusy">
-            <div class="small text-muted mt-1">{{ selectedFileLabel }}</div>
+          <div class="col-12 col-lg-6">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <label class="form-label small fw-semibold mb-0">File</label>
+              <span class="small text-muted">{{ uploadedFiles.length }} files</span>
+            </div>
+            <input
+              ref="fileInputRef"
+              class="form-control mb-2"
+              type="file"
+              multiple
+              @change="onFilesChange"
+              :disabled="isBusy"
+            >
+
+            <div class="workspace-box file-workspace">
+              <div v-if="uploadedFiles.length === 0" class="small text-muted">No file uploaded.</div>
+              <div v-else class="file-grid">
+                <div
+                  v-for="item in uploadedFiles"
+                  :key="item.id"
+                  class="file-item"
+                  :class="{ active: item.id === activeFileId }"
+                >
+                  <button class="file-main" type="button" @click="setActiveFile(item.id)">
+                    <div class="file-name" :title="item.file.name">{{ item.file.name }}</div>
+                    <div class="file-meta">{{ formatFileSize(item.file.size) }}</div>
+                  </button>
+                  <button class="btn btn-outline-danger btn-sm file-remove-btn" type="button" :disabled="isBusy" @click="removeFile(item.id)">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div class="col-12 col-lg-3">
-            <label class="form-label small fw-semibold">Model</label>
-            <select v-model="selectedModel" class="form-select" :disabled="isBusy || models.length === 0">
-              <option v-for="item in models" :key="item.id" :value="item.id">{{ item.label }}</option>
-            </select>
-          </div>
-
-          <div class="col-12 col-lg-5">
-            <label class="form-label small fw-semibold">Analysis Prompt</label>
-            <div class="d-flex gap-2">
-              <input
-                v-model.trim="analysisPrompt"
-                type="text"
-                class="form-control"
-                placeholder="例：请重点分析数据质量风险和可训练性"
-                :disabled="isBusy"
-              >
-              <button class="btn btn-primary" type="button" @click="generateReport" :disabled="!selectedFile || isBusy">
-                <span v-if="isGenerating" class="spinner-border spinner-border-sm" role="status"></span>
-                <span v-else>Generate</span>
+          <div class="col-12 col-lg-6">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <label class="form-label small fw-semibold mb-0">Model</label>
+              <button class="btn btn-outline-primary btn-sm" type="button" @click="openCreateModelModal">
+                Add Model
               </button>
             </div>
-          </div>
 
-          <div class="col-12">
-            <label class="form-label small fw-semibold d-block">Model Runtime</label>
-            <div class="d-flex gap-3 align-items-center flex-wrap mb-2">
-              <div class="form-check">
-                <input id="mode-api" v-model="llmProvider" value="api" class="form-check-input" type="radio" :disabled="isBusy">
-                <label class="form-check-label" for="mode-api">API</label>
-              </div>
-              <div class="form-check">
-                <input id="mode-local" v-model="llmProvider" value="local" class="form-check-input" type="radio" :disabled="isBusy">
-                <label class="form-check-label" for="mode-local">Local</label>
-              </div>
+            <div class="workspace-box model-workspace">
+              <div v-if="models.length === 0" class="small text-muted">No configured model.</div>
+              <ul v-else class="list-group model-list">
+                <li v-for="item in models" :key="item.id" class="list-group-item model-row-item">
+                  <button
+                    class="btn btn-link text-start d-flex align-items-center justify-content-between model-item-btn"
+                    type="button"
+                    :class="{ active: item.id === selectedModel }"
+                    @click="setActiveModel(item.id)"
+                  >
+                    <span class="fw-semibold text-truncate" :title="item.label">{{ item.label }}</span>
+                    <span class="badge text-bg-light ms-2">{{ item.llm_provider === 'local' ? 'Local' : 'API' }}</span>
+                  </button>
+                  <button class="btn btn-outline-secondary btn-sm model-config-btn" type="button" @click="openModelConfigModal(item.id)">
+                    Configure
+                  </button>
+                </li>
+              </ul>
             </div>
 
-            <div class="row g-2">
-              <template v-if="llmProvider === 'api'">
-                <div class="col-12 col-lg-5">
-                  <input v-model.trim="apiEndpoint" type="text" class="form-control" placeholder="API Endpoint (OpenAI-compatible)">
-                </div>
-                <div class="col-12 col-lg-4">
-                  <input v-model.trim="apiKey" type="password" class="form-control" placeholder="API Key">
-                </div>
-                <div class="col-12 col-lg-3">
-                  <input v-model.trim="apiModelName" type="text" class="form-control" placeholder="API Model Name (optional)">
-                </div>
-              </template>
-
-              <template v-else>
-                <div class="col-12 col-lg-8">
-                  <input v-model.trim="localEndpoint" type="text" class="form-control" placeholder="Local Model Address (e.g. http://127.0.0.1:11434/v1/chat/completions)">
-                </div>
-                <div class="col-12 col-lg-4">
-                  <input v-model.trim="localModelName" type="text" class="form-control" placeholder="Local Model Name (optional)">
-                </div>
-              </template>
-            </div>
+            <div class="small text-muted mt-2">Current model: {{ selectedModelLabel }}</div>
           </div>
         </div>
       </div>
@@ -97,53 +96,174 @@
         </div>
 
         <div class="card-footer bg-white border-0 pt-0">
-          <form class="d-flex gap-2" @submit.prevent="reviseReport">
+          <form class="d-flex gap-2" @submit.prevent="submitPrompt">
             <input
-              v-model.trim="revisePrompt"
+              v-model.trim="chatPrompt"
               type="text"
               class="form-control"
-              placeholder="输入修订提示词，例如：改成面向管理层的摘要"
-              :disabled="isBusy || !sessionId"
+              placeholder="Send a prompt. First send will generate a report."
+              :disabled="isBusy"
             >
-            <button class="btn btn-primary" type="submit" :disabled="!revisePrompt || !sessionId || isBusy">
-              <span v-if="isRevising" class="spinner-border spinner-border-sm" role="status"></span>
-              <span v-else>Revise</span>
+            <button class="btn btn-primary" type="submit" :disabled="!chatPrompt || isBusy">
+              <span v-if="isBusy" class="spinner-border spinner-border-sm" role="status"></span>
+              <span v-else>Send</span>
             </button>
           </form>
         </div>
       </article>
 
       <article class="card border-0 shadow-sm report-shell">
-        <div class="card-body d-flex flex-column">
+        <div class="card-body d-flex flex-column report-body">
           <div class="d-flex align-items-center justify-content-between mb-2">
             <h6 class="card-title mb-0">Current Report</h6>
             <span class="badge text-bg-light">{{ sessionId ? `Session ${sessionId.slice(0, 8)}` : 'No Session' }}</span>
           </div>
-          <pre class="report-preview">{{ currentReport || 'No report yet. Upload a file and generate report first.' }}</pre>
+          <pre class="report-preview">{{ currentReport || 'No report yet. Upload files and send a prompt first.' }}</pre>
         </div>
       </article>
+    </div>
+
+    <div class="modal fade" tabindex="-1" ref="modelConfigModalRef" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title mb-0">{{ modelFormMode === 'create' ? 'Add Model' : 'Configure Model' }}</h6>
+            <button type="button" class="btn-close" @click="closeModelConfigModal"></button>
+          </div>
+          <div class="modal-body">
+            <form class="d-flex flex-column gap-3" @submit.prevent="saveModelConfig">
+              <div>
+                <label class="form-label">Model Name</label>
+                <input
+                  v-model.trim="modelForm.label"
+                  type="text"
+                  class="form-control"
+                  placeholder="Example: gpt-4o-mini"
+                  required
+                >
+              </div>
+
+              <div>
+                <label class="form-label d-block mb-2">Mode</label>
+                <div class="d-flex flex-wrap gap-3">
+                  <div class="form-check">
+                    <input id="cfg-api" v-model="modelForm.provider" value="api" class="form-check-input" type="radio">
+                    <label class="form-check-label" for="cfg-api">API</label>
+                  </div>
+                  <div class="form-check">
+                    <input id="cfg-local" v-model="modelForm.provider" value="local" class="form-check-input" type="radio">
+                    <label class="form-check-label" for="cfg-local">Local</label>
+                  </div>
+                </div>
+              </div>
+
+              <template v-if="modelForm.provider === 'api'">
+                <div>
+                  <label class="form-label">API Endpoint</label>
+                  <input
+                    v-model.trim="modelForm.apiEndpoint"
+                    type="text"
+                    class="form-control"
+                    placeholder="OpenAI-compatible endpoint"
+                    required
+                  >
+                </div>
+                <div>
+                  <label class="form-label">API Key</label>
+                  <input
+                    v-model.trim="modelForm.apiKey"
+                    type="password"
+                    class="form-control"
+                    placeholder="API key"
+                  >
+                </div>
+                <div>
+                  <label class="form-label">API Model Name</label>
+                  <input
+                    v-model.trim="modelForm.apiModelName"
+                    type="text"
+                    class="form-control"
+                    placeholder="Example: gpt-4o-mini"
+                  >
+                </div>
+              </template>
+
+              <template v-else>
+                <div>
+                  <label class="form-label">Local Endpoint</label>
+                  <input
+                    v-model.trim="modelForm.localEndpoint"
+                    type="text"
+                    class="form-control"
+                    placeholder="Example: http://127.0.0.1:11434/v1/chat/completions"
+                    required
+                  >
+                </div>
+                <div>
+                  <label class="form-label">Local Model Name</label>
+                  <input
+                    v-model.trim="modelForm.localModelName"
+                    type="text"
+                    class="form-control"
+                    placeholder="Example: qwen2.5:7b"
+                  >
+                </div>
+              </template>
+
+              <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-outline-secondary" type="button" @click="closeModelConfigModal">Cancel</button>
+                <button class="btn btn-primary" type="submit">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { fetchAgentModels, generateAgentReport, reviseAgentReport } from '../../api/dataAgent'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Modal } from 'bootstrap'
+import { generateAgentReport, reviseAgentReport } from '../../api/dataAgent'
 
-const selectedFile = ref(null)
-const selectedModel = ref('')
+const MODEL_STORAGE_KEY = 'agent-configured-models-v3'
+
+const DEFAULT_MODEL = {
+  id: 'gpt-4o-mini',
+  label: 'gpt-4o-mini',
+  llm_provider: 'api',
+  llm_endpoint: '',
+  llm_api_key: '',
+  llm_model_name: 'gpt-4o-mini'
+}
+
+const fileInputRef = ref(null)
+const modelConfigModalRef = ref(null)
+let modelConfigModalInstance = null
+
+const uploadedFiles = ref([])
+const activeFileId = ref('')
+
 const models = ref([])
+const selectedModel = ref('')
 
-const llmProvider = ref('api')
-const apiEndpoint = ref('')
-const apiKey = ref('')
-const apiModelName = ref('')
-const localEndpoint = ref('')
-const localModelName = ref('')
+const modelFormMode = ref('create')
+const editingModelId = ref('')
 
-const analysisPrompt = ref('')
-const revisePrompt = ref('')
+const modelForm = ref({
+  label: '',
+  provider: 'api',
+  apiEndpoint: '',
+  apiKey: '',
+  apiModelName: '',
+  localEndpoint: '',
+  localModelName: ''
+})
+
+const chatPrompt = ref('')
 const sessionId = ref('')
+const sessionFileId = ref('')
 const currentReport = ref('')
 const notice = ref('')
 
@@ -154,12 +274,17 @@ const messages = ref([
   {
     id: 'm-init',
     role: 'assistant',
-    text: '准备就绪：请上传文件并选择模型与调用模式。'
+    text: 'Ready. Upload a file and select the model. The first prompt generates a report.'
   }
 ])
 
 const isBusy = computed(() => isGenerating.value || isRevising.value)
-const selectedFileLabel = computed(() => selectedFile.value?.name || 'No file selected')
+
+const selectedModelConfig = computed(() => models.value.find((item) => item.id === selectedModel.value) || null)
+
+const selectedModelLabel = computed(() => selectedModelConfig.value?.label || 'Not selected')
+
+const activeFile = computed(() => uploadedFiles.value.find((item) => item.id === activeFileId.value) || null)
 
 const appendMessage = (role, text) => {
   messages.value.push({
@@ -169,85 +294,250 @@ const appendMessage = (role, text) => {
   })
 }
 
-const validateRuntime = () => {
-  if (llmProvider.value === 'api' && !apiEndpoint.value.trim()) {
-    notice.value = 'API 模式需要填写 API Endpoint。'
-    return false
+const formatFileSize = (size) => {
+  const n = Number(size || 0)
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`
+}
+
+const normalizeModel = (raw = {}, fallbackId = DEFAULT_MODEL.id) => ({
+  id: String(raw.id || fallbackId),
+  label: String(raw.label || raw.name || raw.id || fallbackId),
+  llm_provider: raw.llm_provider === 'local' ? 'local' : 'api',
+  llm_endpoint: String(raw.llm_endpoint || ''),
+  llm_api_key: String(raw.llm_api_key || ''),
+  llm_model_name: String(raw.llm_model_name || raw.model || raw.name || raw.label || '')
+})
+
+const makeModelId = (label) => {
+  const base = String(label || 'model')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'model'
+
+  const existing = new Set(models.value.map((item) => item.id))
+  let candidate = base
+  let suffix = 2
+  while (existing.has(candidate)) {
+    candidate = `${base}-${suffix}`
+    suffix += 1
   }
-  if (llmProvider.value === 'local' && !localEndpoint.value.trim()) {
-    notice.value = 'Local 模式需要填写本地模型地址。'
-    return false
+  return candidate
+}
+
+const getStoredModels = () => {
+  try {
+    const text = localStorage.getItem(MODEL_STORAGE_KEY)
+    if (!text) return []
+    const list = JSON.parse(text)
+    if (!Array.isArray(list)) return []
+    return list.map((item, index) => normalizeModel(item, `model-${index + 1}`))
+  } catch {
+    return []
   }
-  return true
+}
+
+const saveStoredModels = (modelList) => {
+  try {
+    localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(modelList))
+  } catch {
+    // ignore localStorage errors
+  }
+}
+
+const loadModels = () => {
+  const stored = getStoredModels()
+  models.value = stored.length > 0 ? stored : [normalizeModel(DEFAULT_MODEL)]
+  if (!models.value.some((item) => item.id === selectedModel.value)) {
+    selectedModel.value = models.value[0].id
+  }
+  saveStoredModels(models.value)
+}
+
+const setActiveModel = (modelId) => {
+  selectedModel.value = modelId
+}
+
+const makeFileId = (file) => `${file.name}-${file.size}-${file.lastModified}`
+
+const onFilesChange = (event) => {
+  const files = event?.target?.files ? Array.from(event.target.files) : []
+  if (files.length === 0) return
+
+  const existingIds = new Set(uploadedFiles.value.map((item) => item.id))
+  files.forEach((file) => {
+    const id = makeFileId(file)
+    if (existingIds.has(id)) return
+    uploadedFiles.value.push({ id, file })
+    existingIds.add(id)
+  })
+
+  if (!activeFileId.value && uploadedFiles.value.length > 0) {
+    activeFileId.value = uploadedFiles.value[0].id
+  }
+
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+}
+
+const setActiveFile = (fileId) => {
+  activeFileId.value = fileId
+}
+
+const removeFile = (fileId) => {
+  const remain = uploadedFiles.value.filter((item) => item.id !== fileId)
+  uploadedFiles.value = remain
+
+  if (activeFileId.value === fileId) {
+    activeFileId.value = remain[0]?.id || ''
+  }
+  if (sessionFileId.value === fileId) {
+    sessionId.value = ''
+    sessionFileId.value = ''
+    currentReport.value = ''
+  }
+}
+
+const getModelConfigModal = () => {
+  if (!modelConfigModalRef.value) return null
+  modelConfigModalInstance = Modal.getOrCreateInstance(modelConfigModalRef.value)
+  return modelConfigModalInstance
+}
+
+const fillModelForm = (model) => {
+  const config = normalizeModel(model)
+  modelForm.value = {
+    label: config.label,
+    provider: config.llm_provider,
+    apiEndpoint: config.llm_provider === 'api' ? config.llm_endpoint : '',
+    apiKey: config.llm_provider === 'api' ? config.llm_api_key : '',
+    apiModelName: config.llm_provider === 'api' ? config.llm_model_name : '',
+    localEndpoint: config.llm_provider === 'local' ? config.llm_endpoint : '',
+    localModelName: config.llm_provider === 'local' ? config.llm_model_name : ''
+  }
+}
+
+const openCreateModelModal = () => {
+  modelFormMode.value = 'create'
+  editingModelId.value = ''
+  modelForm.value = {
+    label: '',
+    provider: 'api',
+    apiEndpoint: '',
+    apiKey: '',
+    apiModelName: '',
+    localEndpoint: '',
+    localModelName: ''
+  }
+  getModelConfigModal()?.show()
+}
+
+const openModelConfigModal = (modelId) => {
+  const model = models.value.find((item) => item.id === modelId)
+  if (!model) return
+
+  modelFormMode.value = 'edit'
+  editingModelId.value = model.id
+  fillModelForm(model)
+  getModelConfigModal()?.show()
+}
+
+const closeModelConfigModal = () => {
+  getModelConfigModal()?.hide()
+}
+
+const saveModelConfig = () => {
+  notice.value = ''
+  const label = modelForm.value.label.trim()
+  if (!label) {
+    notice.value = 'Please enter model name.'
+    return
+  }
+
+  const provider = modelForm.value.provider === 'local' ? 'local' : 'api'
+  const endpoint = provider === 'api'
+    ? modelForm.value.apiEndpoint.trim()
+    : modelForm.value.localEndpoint.trim()
+
+  if (!endpoint) {
+    notice.value = provider === 'api' ? 'Please enter API endpoint.' : 'Please enter local endpoint.'
+    return
+  }
+
+  if (modelFormMode.value === 'edit' && editingModelId.value) {
+    models.value = models.value.map((item) => {
+      if (item.id !== editingModelId.value) return item
+      return {
+        ...item,
+        label,
+        llm_provider: provider,
+        llm_endpoint: endpoint,
+        llm_api_key: provider === 'api' ? modelForm.value.apiKey.trim() : '',
+        llm_model_name: provider === 'api'
+          ? modelForm.value.apiModelName.trim() || label
+          : modelForm.value.localModelName.trim() || label
+      }
+    })
+    selectedModel.value = editingModelId.value
+  } else {
+    const newId = makeModelId(label)
+    const newModel = {
+      id: newId,
+      label,
+      llm_provider: provider,
+      llm_endpoint: endpoint,
+      llm_api_key: provider === 'api' ? modelForm.value.apiKey.trim() : '',
+      llm_model_name: provider === 'api'
+        ? modelForm.value.apiModelName.trim() || label
+        : modelForm.value.localModelName.trim() || label
+    }
+    models.value = [...models.value, newModel]
+    selectedModel.value = newId
+  }
+
+  saveStoredModels(models.value)
+  closeModelConfigModal()
 }
 
 const getRuntimePayload = () => {
-  if (llmProvider.value === 'api') {
-    return {
-      llm_provider: 'api',
-      llm_endpoint: apiEndpoint.value.trim(),
-      llm_api_key: apiKey.value.trim(),
-      llm_model_name: apiModelName.value.trim()
-    }
+  const model = selectedModelConfig.value
+  if (!model) {
+    notice.value = 'Please select a model.'
+    return null
+  }
+  if (!model.llm_endpoint) {
+    notice.value = 'The selected model has no endpoint. Configure it first.'
+    return null
   }
 
   return {
-    llm_provider: 'local',
-    llm_endpoint: localEndpoint.value.trim(),
-    llm_api_key: '',
-    llm_model_name: localModelName.value.trim()
+    llm_provider: model.llm_provider,
+    llm_endpoint: model.llm_endpoint,
+    llm_api_key: model.llm_api_key,
+    llm_model_name: model.llm_model_name
   }
 }
 
-const loadModels = async () => {
-  notice.value = ''
-  try {
-    const response = await fetchAgentModels()
-    const rawModels = response?.data?.models
-    if (Array.isArray(rawModels) && rawModels.length > 0) {
-      models.value = rawModels
-    } else {
-      models.value = [
-        { id: 'gpt-4o-mini', label: 'gpt-4o-mini' },
-        { id: 'gpt-4.1-mini', label: 'gpt-4.1-mini' }
-      ]
-    }
-  } catch (error) {
-    models.value = [
-      { id: 'gpt-4o-mini', label: 'gpt-4o-mini' },
-      { id: 'gpt-4.1-mini', label: 'gpt-4.1-mini' }
-    ]
-    notice.value = `模型列表加载失败，使用默认模型。(${error?.message || 'unknown error'})`
-  }
-
-  if (!selectedModel.value && models.value.length > 0) {
-    selectedModel.value = models.value[0].id
-  }
-}
-
-const onFileChange = (event) => {
-  const files = event?.target?.files
-  selectedFile.value = files && files.length > 0 ? files[0] : null
-}
-
-const generateReport = async () => {
-  if (!selectedFile.value) {
-    notice.value = '请先选择文件。'
+const generateReport = async (prompt) => {
+  if (!activeFile.value?.file) {
+    notice.value = 'Please upload a file first.'
     return
   }
-  if (!validateRuntime()) return
+  const runtime = getRuntimePayload()
+  if (!runtime) return
 
   isGenerating.value = true
   notice.value = ''
-
-  appendMessage('user', analysisPrompt.value || '请生成该文件的分析报告。')
+  appendMessage('user', prompt)
 
   try {
-    const runtime = getRuntimePayload()
     const formData = new FormData()
-    formData.append('file', selectedFile.value, selectedFile.value.name)
+    formData.append('file', activeFile.value.file, activeFile.value.file.name)
     formData.append('model', selectedModel.value || '')
-    formData.append('prompt', analysisPrompt.value || '')
+    formData.append('prompt', prompt)
     formData.append('llm_provider', runtime.llm_provider)
     formData.append('llm_endpoint', runtime.llm_endpoint)
     formData.append('llm_api_key', runtime.llm_api_key)
@@ -255,13 +545,12 @@ const generateReport = async () => {
 
     const response = await generateAgentReport(formData)
     const data = response?.data || {}
-
     sessionId.value = String(data.session_id || '').trim()
+    sessionFileId.value = activeFile.value.id
     currentReport.value = String(data.report || '').trim()
-
-    appendMessage('assistant', currentReport.value || '报告生成完成，但返回内容为空。')
+    appendMessage('assistant', currentReport.value || 'Report generated, but returned empty content.')
   } catch (error) {
-    const msg = `报告生成失败：${error?.message || 'unknown error'}`
+    const msg = `Generate failed: ${error?.message || 'unknown error'}`
     notice.value = msg
     appendMessage('assistant', msg)
   } finally {
@@ -269,30 +558,30 @@ const generateReport = async () => {
   }
 }
 
-const reviseReport = async () => {
-  if (!sessionId.value || !revisePrompt.value) return
-  if (!validateRuntime()) return
-
-  const userPrompt = revisePrompt.value
-  revisePrompt.value = ''
+const reviseReport = async (prompt) => {
+  if (!sessionId.value) {
+    await generateReport(prompt)
+    return
+  }
+  const runtime = getRuntimePayload()
+  if (!runtime) return
 
   isRevising.value = true
   notice.value = ''
-  appendMessage('user', userPrompt)
+  appendMessage('user', prompt)
 
   try {
-    const runtime = getRuntimePayload()
     const response = await reviseAgentReport({
       session_id: sessionId.value,
       model: selectedModel.value || null,
-      prompt: userPrompt,
+      prompt,
       ...runtime
     })
     const data = response?.data || {}
     currentReport.value = String(data.report || '').trim()
-    appendMessage('assistant', currentReport.value || '报告已修订，但返回内容为空。')
+    appendMessage('assistant', currentReport.value || 'Report revised, but returned empty content.')
   } catch (error) {
-    const msg = `报告修订失败：${error?.message || 'unknown error'}`
+    const msg = `Revise failed: ${error?.message || 'unknown error'}`
     notice.value = msg
     appendMessage('assistant', msg)
   } finally {
@@ -300,13 +589,32 @@ const reviseReport = async () => {
   }
 }
 
+const submitPrompt = async () => {
+  const prompt = chatPrompt.value.trim()
+  if (!prompt || isBusy.value) return
+  chatPrompt.value = ''
+
+  const isFileSwitched = sessionFileId.value && sessionFileId.value !== activeFileId.value
+  if (!sessionId.value || isFileSwitched) {
+    if (isFileSwitched) {
+      sessionId.value = ''
+      sessionFileId.value = ''
+      currentReport.value = ''
+      appendMessage('assistant', 'File switched. Started a new report session automatically.')
+    }
+    await generateReport(prompt)
+    return
+  }
+
+  await reviseReport(prompt)
+}
+
 const resetSession = () => {
   if (isBusy.value) return
 
-  selectedFile.value = null
-  analysisPrompt.value = ''
-  revisePrompt.value = ''
+  chatPrompt.value = ''
   sessionId.value = ''
+  sessionFileId.value = ''
   currentReport.value = ''
   notice.value = ''
 
@@ -314,13 +622,17 @@ const resetSession = () => {
     {
       id: `m-reset-${Date.now()}`,
       role: 'assistant',
-      text: '会话已重置。请重新上传文件并生成报告。'
+      text: 'Session reset. Uploaded files and model configuration are kept.'
     }
   ]
 }
 
 onMounted(() => {
   loadModels()
+})
+
+onBeforeUnmount(() => {
+  modelConfigModalInstance?.dispose()
 })
 </script>
 
@@ -331,15 +643,113 @@ onMounted(() => {
   gap: 0.5rem;
 }
 
+.workspace-box {
+  height: 220px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 0.5rem;
+}
+
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.35rem 0.4rem;
+  min-width: 0;
+}
+
+.file-item.active {
+  border-color: #bfdbff;
+  background: #f0f7ff;
+}
+
+.file-main {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-meta {
+  font-size: 0.72rem;
+  color: #64748b;
+  line-height: 1.2;
+}
+
+.file-remove-btn {
+  flex: 0 0 auto;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.72rem;
+}
+
+.model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.model-row-item {
+  display: flex;
+  align-items: stretch;
+  gap: 0.45rem;
+  padding: 0.35rem;
+}
+
+.model-item-btn {
+  text-decoration: none;
+  color: inherit;
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.model-item-btn.active {
+  background: #eef5ff;
+}
+
+.model-config-btn {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0.2rem 0.45rem;
+}
+
 .interaction-layout {
   display: grid;
   grid-template-columns: 1.25fr 1fr;
   gap: 1rem;
-  min-height: 540px;
 }
 
 .chat-shell,
 .report-shell {
+  height: 560px;
+  min-height: 0;
+}
+
+.chat-body,
+.report-body {
   min-height: 0;
 }
 
@@ -348,7 +758,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 0.75rem;
   overflow: auto;
-  max-height: 520px;
+  flex: 1;
 }
 
 .message-row {
@@ -388,12 +798,13 @@ onMounted(() => {
 
 .report-preview {
   margin: 0;
+  flex: 1;
+  min-height: 0;
   padding: 0.75rem;
   border-radius: 10px;
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   overflow: auto;
-  min-height: 460px;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -403,12 +814,13 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .chat-body {
-    max-height: 400px;
+  .workspace-box {
+    height: 190px;
   }
 
-  .report-preview {
-    min-height: 320px;
+  .chat-shell,
+  .report-shell {
+    height: 460px;
   }
 }
 </style>
