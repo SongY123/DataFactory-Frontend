@@ -39,6 +39,11 @@ const routes = [
         path: 'agent-interaction',
         name: 'AgentInteraction',
         component: () => import('../views/modules/AgentInteraction.vue')
+      },
+      {
+        path: 'agentic-data-synthesis',
+        name: 'AgenticDataSynthesis',
+        component: () => import('../views/modules/AgenticDataSynthesis.vue')
       }
     ]
   },
