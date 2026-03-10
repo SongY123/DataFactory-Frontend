@@ -1,4 +1,4 @@
-import { config } from '../config/global.js'
+﻿import { config } from '../config/global.js'
 
 const parseError = async (res) => {
   const text = await res.text()
@@ -40,6 +40,35 @@ export const createDataset = (payload) =>
     body: JSON.stringify(payload)
   })
 
+export const fetchDatasetDetail = (datasetId) => request(`/datasets/${datasetId}`)
+
+export const uploadDataset = (formData) =>
+  request('/datasets/upload', {
+    method: 'POST',
+    body: formData
+  })
+
+export const updateDataset = (datasetId, payload) =>
+  request(`/datasets/${datasetId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+export const updateDatasetCover = (datasetId, coverFile) => {
+  const formData = new FormData()
+  formData.append('cover', coverFile)
+  return request(`/datasets/${datasetId}/cover`, {
+    method: 'PUT',
+    body: formData
+  })
+}
+
+export const deleteDataset = (datasetId) =>
+  request(`/datasets/${datasetId}`, {
+    method: 'DELETE'
+  })
+
 export const fetchProcessingJobs = () => request('/processing/jobs')
 
 export const createProcessingJob = (payload) =>
@@ -62,6 +91,21 @@ export const fetchEvaluationReports = () => request('/evaluation/reports')
 
 export const createEvaluationTask = (payload) =>
   request('/evaluation/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+export const fetchAgentModels = () => request('/agent/models')
+
+export const generateAgentReport = (formData) =>
+  request('/agent/report', {
+    method: 'POST',
+    body: formData
+  })
+
+export const reviseAgentReport = (payload) =>
+  request('/agent/report/revise', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
