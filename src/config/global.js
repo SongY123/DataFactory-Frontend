@@ -8,36 +8,28 @@ export const workflowModules = [
     name: 'DataPreparation',
     to: '/data-preparation',
     label: 'Data Preparation',
+    workflowLabel: 'Data Preparation',
     description: 'Collect, align, and register training datasets.'
   },
   {
-    name: 'DataProcessing',
-    to: '/data-processing',
-    label: 'Data Processing',
-    description: 'Clean, normalize, and transform training data.'
+    name: 'ReasoningDataDistillation',
+    to: '/reasoning-data-distillation',
+    label: 'Reasoning Distillation',
+    workflowLabel: 'Reasoning Data Distillation',
+    description: 'Distill high-quality reasoning traces into compact training corpora.'
   },
   {
-    name: 'ModelTraining',
-    to: '/model-training',
-    label: 'Model Training',
-    description: 'Configure hyperparameters and launch training jobs.'
-  },
-  {
-    name: 'ModelEvaluation',
-    to: '/model-evaluation',
-    label: 'Model Evaluation',
-    description: 'Track benchmark metrics and failure slices.'
+    name: 'TrajectorySynthesis',
+    to: '/trajectory-synthesis',
+    label: 'Trajectory Synthesis',
+    workflowLabel: 'Agentic Trajectory Synthesis',
+    description: 'Generate synthesized trajectories and track task progress.'
   },
   {
     name: 'AgentInteraction',
     to: '/agent-interaction',
     label: 'Agent Interaction',
+    workflowLabel: 'Agent Interaction',
     description: 'Validate agent responses with real conversation loops.'
   },
-  {
-    name: 'AgenticDataSynthesis',
-    to: '/agentic-data-synthesis',
-    label: 'Agentic Data Synthesis',
-    description: 'Generate synthesized datasets and track task progress.'
-  }
 ]

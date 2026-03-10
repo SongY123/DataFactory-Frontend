@@ -69,33 +69,6 @@ export const deleteDataset = (datasetId) =>
     method: 'DELETE'
   })
 
-export const fetchProcessingJobs = () => request('/processing/jobs')
-
-export const createProcessingJob = (payload) =>
-  request('/processing/jobs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
-
-export const fetchTrainingJobs = () => request('/training/jobs')
-
-export const createTrainingJob = (payload) =>
-  request('/training/jobs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
-
-export const fetchEvaluationReports = () => request('/evaluation/reports')
-
-export const createEvaluationTask = (payload) =>
-  request('/evaluation/tasks', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
-
 export const fetchAgentModels = () => request('/agent/models')
 
 export const generateAgentReport = (formData) =>

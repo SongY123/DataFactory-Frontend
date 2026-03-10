@@ -21,29 +21,23 @@ const routes = [
         component: () => import('../views/modules/DataPreparation.vue')
       },
       {
-        path: 'data-processing',
-        name: 'DataProcessing',
-        component: () => import('../views/modules/DataProcessing.vue')
+        path: 'trajectory-synthesis',
+        name: 'TrajectorySynthesis',
+        component: () => import('../views/modules/TrajectorySynthesis.vue')
       },
       {
-        path: 'model-training',
-        name: 'ModelTraining',
-        component: () => import('../views/modules/ModelTraining.vue')
+        path: 'agentic-data-synthesis',
+        redirect: '/trajectory-synthesis'
       },
       {
-        path: 'model-evaluation',
-        name: 'ModelEvaluation',
-        component: () => import('../views/modules/ModelEvaluation.vue')
+        path: 'reasoning-data-distillation',
+        name: 'ReasoningDataDistillation',
+        component: () => import('../views/modules/ReasoningDataDistillation.vue')
       },
       {
         path: 'agent-interaction',
         name: 'AgentInteraction',
         component: () => import('../views/modules/AgentInteraction.vue')
-      },
-      {
-        path: 'agentic-data-synthesis',
-        name: 'AgenticDataSynthesis',
-        component: () => import('../views/modules/AgenticDataSynthesis.vue')
       }
     ]
   },

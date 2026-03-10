@@ -1,10 +1,25 @@
 <template>
   <div class="workspace-shell">
-    <aside class="workflow-sidebar border-end">
+    <aside class="workflow-sidebar border-end" :class="{ collapsed: isSidebarCollapsed }">
       <div class="sidebar-head">
-        <p class="text-uppercase text-muted fw-semibold small mb-2">Workflow</p>
-        <h5 class="mb-2">Data Agent Training</h5>
-        <p class="text-muted small mb-0">Drive each cycle from dataset onboarding to online interaction validation.</p>
+        <div class="sidebar-head-top">
+          <div>
+            <p class="text-uppercase text-muted fw-semibold small mb-2">Workflow</p>
+            <h5 v-if="!isSidebarCollapsed" class="mb-2">Data Agent Training</h5>
+          </div>
+          <button
+            type="button"
+            class="sidebar-toggle-btn"
+            :aria-label="isSidebarCollapsed ? 'Expand workflow' : 'Collapse workflow'"
+            :title="isSidebarCollapsed ? 'Expand workflow' : 'Collapse workflow'"
+            @click="toggleSidebar"
+          >
+            <i class="bi" :class="isSidebarCollapsed ? 'bi-chevron-double-right' : 'bi-chevron-double-left'"></i>
+          </button>
+        </div>
+        <p v-if="!isSidebarCollapsed" class="text-muted small mb-0">
+          Drive each cycle from dataset onboarding to online interaction validation.
+        </p>
       </div>
 
       <div class="workflow-steps mt-3">
@@ -14,17 +29,18 @@
           type="button"
           class="workflow-step"
           :class="{ active: route.name === item.name }"
+          :title="isSidebarCollapsed ? (item.workflowLabel || item.label) : ''"
           @click="router.push(item.to)"
         >
           <span class="step-index">{{ index + 1 }}</span>
-          <span class="step-body">
-            <span class="step-title">{{ item.label }}</span>
+          <span v-if="!isSidebarCollapsed" class="step-body">
+            <span class="step-title">{{ item.workflowLabel || item.label }}</span>
             <span class="step-desc">{{ item.description }}</span>
           </span>
         </button>
       </div>
 
-      <div class="sidebar-foot mt-auto">
+      <div v-if="!isSidebarCollapsed" class="sidebar-foot mt-auto">
         <div class="small text-muted">Current stage</div>
         <div class="fw-semibold">{{ currentModuleLabel }}</div>
       </div>
@@ -37,16 +53,23 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { workflowModules } from '../config/global.js'
 
+const WORKFLOW_SIDEBAR_COLLAPSE_KEY = 'workflowSidebarCollapsed'
 const route = useRoute()
 const router = useRouter()
+const isSidebarCollapsed = ref(localStorage.getItem(WORKFLOW_SIDEBAR_COLLAPSE_KEY) === 'true')
+
+const toggleSidebar = () => {
+  isSidebarCollapsed.value = !isSidebarCollapsed.value
+  localStorage.setItem(WORKFLOW_SIDEBAR_COLLAPSE_KEY, String(isSidebarCollapsed.value))
+}
 
 const currentModuleLabel = computed(() => {
   const match = workflowModules.find((item) => item.name === route.name)
-  return match?.label || workflowModules[0].label
+  return match?.workflowLabel || match?.label || workflowModules[0].workflowLabel || workflowModules[0].label
 })
 </script>
 
@@ -65,11 +88,61 @@ const currentModuleLabel = computed(() => {
   padding: 1.15rem;
   gap: 0.25rem;
   min-width: 280px;
+  transition: width 0.2s ease, min-width 0.2s ease, padding 0.2s ease;
+}
+
+.workflow-sidebar.collapsed {
+  width: 96px;
+  min-width: 96px;
+  padding: 0.9rem 0.6rem;
 }
 
 .sidebar-head {
   padding-bottom: 0.45rem;
   border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-head-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sidebar-toggle-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #cbd7ea;
+  background: #f8fbff;
+  color: #335b93;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.18s ease;
+}
+
+.sidebar-toggle-btn:hover {
+  border-color: #90b0df;
+  background: #edf4ff;
+}
+
+.sidebar-toggle-btn:focus-visible {
+  outline: 2px solid #2f6fca;
+  outline-offset: 1px;
+}
+
+.sidebar-toggle-btn .bi {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.workflow-sidebar.collapsed .sidebar-head-top {
+  justify-content: center;
+}
+
+.workflow-sidebar.collapsed .sidebar-head-top > div {
+  display: none;
 }
 
 .workflow-steps {
@@ -79,6 +152,7 @@ const currentModuleLabel = computed(() => {
 }
 
 .workflow-step {
+  width: 100%;
   border: 1px solid var(--border-color);
   background: #fff;
   border-radius: 14px;
@@ -98,6 +172,12 @@ const currentModuleLabel = computed(() => {
 .workflow-step.active {
   border-color: #2563eb;
   background: #eef4ff;
+}
+
+.workflow-sidebar.collapsed .workflow-step {
+  padding: 0.6rem;
+  justify-content: center;
+  align-items: center;
 }
 
 .step-index {
@@ -151,9 +231,11 @@ const currentModuleLabel = computed(() => {
     flex-direction: column;
   }
 
-  .workflow-sidebar {
+  .workflow-sidebar,
+  .workflow-sidebar.collapsed {
     width: 100%;
     min-width: 0;
+    padding: 1rem;
   }
 }
 </style>
