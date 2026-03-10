@@ -2,7 +2,7 @@ node_modules
 dist
 .DS_Store
 .vscode
-.idea
+.idea/
 .env
 .env.*
 !.env.example

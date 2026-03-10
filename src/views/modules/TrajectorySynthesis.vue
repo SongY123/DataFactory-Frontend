@@ -2,8 +2,8 @@
   <div class="module-page">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
       <div>
-        <h4 class="mb-1">Agentic Data Synthesis</h4>
-        <p class="text-muted mb-0">Configure synthesis prompts and monitor task execution progress from the backend agentic workflow.</p>
+        <h4 class="mb-1">Agentic Trajectory Synthesis</h4>
+        <p class="text-muted mb-0">Configure synthesis prompts and monitor task execution progress from the backend trajectory workflow.</p>
       </div>
       <div class="d-flex align-items-center gap-2">
         <button class="btn btn-outline-secondary btn-sm" type="button" @click="refreshTasks" :disabled="isLoading">
@@ -120,12 +120,12 @@
                 v-model.trim="taskForm.outputFilePath"
                 type="text"
                 class="form-control"
-                placeholder="./outputs/agentic_synthesis.json"
+                placeholder="./outputs/trajectory_synthesis.json"
               >
 
               <button class="btn btn-primary mt-1" type="submit" :disabled="isSubmitting">
                 <span v-if="isSubmitting" class="spinner-border spinner-border-sm me-1" role="status"></span>
-                Start Agentic Synthesis Task
+                Start Agentic Trajectory Synthesis Task
               </button>
             </form>
           </div>
@@ -307,7 +307,7 @@ const taskForm = ref({
   llmBaseUrl: 'https://api.openai.com/v1',
   llmModelName: 'gpt-4o-mini',
   datasets: [{ name: 'agent_dialog_zh_v3', uri: '' }],
-  outputFilePath: './outputs/agentic_synthesis.json'
+  outputFilePath: './outputs/trajectory_synthesis.json'
 })
 
 let pollTimer = null
@@ -562,7 +562,7 @@ const startTask = async () => {
 
     selectedTaskId.value = optimisticTask.id
     await inspectTask(optimisticTask.id, { silent: true })
-    notice.value = 'Agentic synthesis task started successfully.'
+    notice.value = 'Trajectory synthesis task started successfully.'
   } catch (error) {
     notice.value = `Failed to start task. (${error?.message || 'backend error'})`
   } finally {
