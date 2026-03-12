@@ -71,11 +71,35 @@
               <div v-if="sampleRows.length === 0" class="empty-samples">
                 No sample records are available for this dataset.
               </div>
-              <div v-else class="sample-list">
-                <article v-for="(sample, index) in visibleSamples" :key="index" class="sample-card">
-                  <div class="sample-index">#{{ index + 1 }}</div>
-                  <pre class="sample-pre">{{ stringifySample(sample) }}</pre>
-                </article>
+              <div v-else class="dataset-table-wrap">
+                <div class="table-responsive">
+                  <table class="table dataset-viewer-table align-middle mb-0">
+                    <thead>
+                    <tr>
+                      <th class="col-id">id</th>
+                      <th class="col-messages">messages</th>
+                      <th class="col-numeric">input_tokens</th>
+                      <th class="col-numeric">output_tokens</th>
+                      <th class="col-numeric">total_tokens</th>
+                      <th class="col-evaluation">evaluation</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="row in sampleTableRows" :key="row.rowKey">
+                      <td class="mono-cell">{{ row.id }}</td>
+                      <td>
+                        <div class="messages-cell" :title="row.messagesFull">{{ row.messagesPreview }}</div>
+                      </td>
+                      <td class="mono-cell">{{ row.inputTokens }}</td>
+                      <td class="mono-cell">{{ row.outputTokens }}</td>
+                      <td class="mono-cell">{{ row.totalTokens }}</td>
+                      <td>
+                        <div class="evaluation-cell" :title="row.evaluationFull">{{ row.evaluationPreview }}</div>
+                      </td>
+                    </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </article>
@@ -146,17 +170,29 @@
           <div class="modal-body">
             <div v-if="sampleRows.length === 0" class="text-muted small">No sample data.</div>
             <div v-else class="table-responsive">
-              <table class="table table-sm table-bordered align-middle mb-0">
-                <thead class="table-light">
+              <table class="table dataset-viewer-table align-middle mb-0">
+                <thead>
                 <tr>
-                  <th style="width: 50px;">#</th>
-                  <th>Content</th>
+                  <th style="width: 90px;">id</th>
+                  <th>messages</th>
+                  <th style="width: 140px;">input_tokens</th>
+                  <th style="width: 150px;">output_tokens</th>
+                  <th style="width: 140px;">total_tokens</th>
+                  <th style="width: 140px;">evaluation</th>
                 </tr>
                 </thead>
                 <tbody>
-                <tr v-for="(sample, index) in sampleRows" :key="index">
-                  <td>{{ index + 1 }}</td>
-                  <td><pre class="sample-pre mb-0">{{ stringifySample(sample) }}</pre></td>
+                <tr v-for="row in sampleTableRows" :key="`modal-${row.rowKey}`">
+                  <td class="mono-cell">{{ row.id }}</td>
+                  <td>
+                    <div class="messages-cell" :title="row.messagesFull">{{ row.messagesPreview }}</div>
+                  </td>
+                  <td class="mono-cell">{{ row.inputTokens }}</td>
+                  <td class="mono-cell">{{ row.outputTokens }}</td>
+                  <td class="mono-cell">{{ row.totalTokens }}</td>
+                  <td>
+                    <div class="evaluation-cell" :title="row.evaluationFull">{{ row.evaluationPreview }}</div>
+                  </td>
                 </tr>
                 </tbody>
               </table>
@@ -186,6 +222,7 @@ const dataset = ref(null)
 const sampleRows = ref([])
 const sampleModalRef = ref(null)
 let sampleModalInstance = null
+const SAMPLE_RECORDS_LIMIT = 20
 
 const typeLabels = {
   instruction: 'Instruction',
@@ -200,8 +237,18 @@ const languageLabels = {
   multi: 'Multilingual'
 }
 
-const visibleSamples = computed(() => sampleRows.value.slice(0, 4))
-const sampleCountLabel = computed(() => `${sampleRows.value.length} samples`)
+const sampleCountLabel = computed(() => {
+  const total = sampleRows.value.length
+  if (total > SAMPLE_RECORDS_LIMIT) {
+    return `Showing ${SAMPLE_RECORDS_LIMIT} of ${total} samples`
+  }
+  return `${total} samples`
+})
+const sampleTableRows = computed(() =>
+  sampleRows.value
+    .slice(0, SAMPLE_RECORDS_LIMIT)
+    .map((sample, index) => normalizeSampleRow(sample, index))
+)
 
 const statusClass = (status) => {
   if (status === 'ready') return 'bg-success-subtle text-success-emphasis'
@@ -219,6 +266,58 @@ const formatSize = (size) => {
 }
 
 const stringifySample = (sample) => JSON.stringify(sample, null, 2)
+
+const stringifyCompact = (value) => {
+  if (typeof value === 'string') return value
+  if (value == null) return ''
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+const toDisplayText = (value, fallback = '-') => {
+  const textValue = stringifyCompact(value).trim()
+  return textValue || fallback
+}
+
+const normalizeMessagesPreview = (messages) => {
+  if (Array.isArray(messages)) {
+    const joined = messages
+      .map((item) => {
+        if (item && typeof item === 'object') {
+          const role = stringifyCompact(item.role || item.speaker || item.name).trim()
+          const content = stringifyCompact(item.content || item.text || item.message).trim()
+          if (role && content) return `${role}: ${content}`
+          return content || role || stringifyCompact(item)
+        }
+        return stringifyCompact(item)
+      })
+      .filter(Boolean)
+      .join(' | ')
+    return toDisplayText(joined)
+  }
+
+  return toDisplayText(messages)
+}
+
+const normalizeSampleRow = (sample, index) => {
+  const messagesFull = normalizeMessagesPreview(sample?.messages)
+  const evaluationFull = toDisplayText(sample?.evaluation)
+
+  return {
+    rowKey: sample?.id ?? index,
+    id: sample?.id ?? index + 1,
+    messagesFull,
+    messagesPreview: messagesFull,
+    inputTokens: sample?.input_tokens ?? '-',
+    outputTokens: sample?.output_tokens ?? '-',
+    totalTokens: sample?.total_tokens ?? '-',
+    evaluationFull,
+    evaluationPreview: evaluationFull,
+  }
+}
 
 const normalizeDatasetDetail = (detail) => ({
   id: Number(detail?.id || detail?.dataset_id || 0),
@@ -443,34 +542,112 @@ onBeforeUnmount(() => {
   color: #64748b;
 }
 
-.sample-list {
-  display: grid;
-  gap: 1rem;
-}
-
-.sample-card {
-  border: 1px solid #e2e8f0;
+.dataset-table-wrap {
+  border: 1px solid #dbe3ee;
   border-radius: 1rem;
   overflow: hidden;
   background: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
-.sample-index {
-  padding: 0.65rem 0.9rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: #f8fafc;
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: #475569;
-}
-
-.sample-pre {
+.dataset-viewer-table {
   margin: 0;
-  padding: 1rem;
-  white-space: pre-wrap;
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  --bs-table-bg: transparent;
+}
+
+.dataset-viewer-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #dbe3ee;
+  border-right: 1px solid #e2e8f0;
+}
+
+.dataset-viewer-table thead th:last-child {
+  border-right: none;
+}
+
+.dataset-viewer-table td,
+.dataset-viewer-table th {
+  padding: 0.72rem 0.85rem;
+  vertical-align: top;
+  border-color: #e2e8f0;
+}
+
+.dataset-viewer-table tbody td {
+  font-size: 0.78rem;
+  color: #1f2937;
+  border-bottom: 1px solid #edf2f7;
+  border-right: 1px solid #edf2f7;
+  background: #ffffff;
+}
+
+.dataset-viewer-table tbody td:last-child {
+  border-right: none;
+}
+
+.dataset-viewer-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dataset-viewer-table tbody tr:hover td {
+  background: #f8fbff;
+}
+
+.col-id {
+  width: 72px;
+}
+
+.col-messages {
+  width: 42%;
+}
+
+.col-numeric {
+  width: 112px;
+}
+
+.col-evaluation {
+  width: 22%;
+}
+
+.mono-cell {
+  font-family: Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace;
+  font-size: 0.74rem;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.messages-cell,
+.evaluation-cell {
+  display: -webkit-box;
+  width: 100%;
+  overflow: hidden;
+  color: #334155;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: normal;
   word-break: break-word;
-  font-size: 0.83rem;
-  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-height: calc(1.35em * 2);
+}
+
+.messages-cell {
+  max-width: 100%;
+}
+
+.evaluation-cell {
+  max-width: 100%;
 }
 
 @media (max-width: 991px) {

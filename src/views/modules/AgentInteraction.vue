@@ -40,6 +40,17 @@
             class="asset-row asset-row-root"
             :class="{ active: selectedAssetType === 'folder' && selectedAssetPath === '' }"
           >
+            <span class="asset-checkbox-slot">
+              <input
+                class="asset-checkbox-input"
+                type="checkbox"
+                :checked="isRootChecked"
+                :indeterminate.prop="isRootIndeterminate"
+                :disabled="isBusy || !allFilePaths.length"
+                @click.stop
+                @change="toggleRootFilesSelection"
+              >
+            </span>
             <button class="asset-main-btn" type="button" @click="selectRoot">
               <span class="asset-icon root"><i class="bi bi-hdd-stack"></i></span>
               <span class="asset-copy">
@@ -76,6 +87,7 @@
           <div v-for="node in flattenedAssetRows" :key="node.id" class="asset-row-wrap">
             <div v-if="node.isPending" class="asset-row pending-folder-row" :style="{ paddingLeft: `${0.75 + node.depth * 1.05}rem` }">
               <span class="asset-expand-spacer"></span>
+              <span class="asset-checkbox-spacer"></span>
               <div class="asset-main-btn pending-folder-main">
                 <span class="asset-icon folder"><i class="bi bi-folder-fill"></i></span>
                 <div class="asset-copy pending-folder-input-wrap">
@@ -104,6 +116,18 @@
                 <i class="bi" :class="isFolderExpanded(node.path) ? 'bi-chevron-down' : 'bi-chevron-right'"></i>
               </button>
               <span v-else class="asset-expand-spacer"></span>
+
+              <span class="asset-checkbox-slot">
+                <input
+                  class="asset-checkbox-input"
+                  type="checkbox"
+                  :checked="isNodeChecked(node)"
+                  :indeterminate.prop="isNodeIndeterminate(node)"
+                  :disabled="isBusy || !hasSelectableFiles(node)"
+                  @click.stop
+                  @change="toggleNodeFilesSelection(node)"
+                >
+              </span>
 
               <button class="asset-main-btn" type="button" @click="selectAssetNode(node)">
                 <span class="asset-icon" :class="node.type">
@@ -134,7 +158,6 @@
       <div class="chat-panel-header">
         <div>
           <h5 class="mb-1">Agent Interaction</h5>
-          <p class="text-muted mb-0">Multi-agent streaming conversation over the saved folders and files in your asset library.</p>
         </div>
       </div>
 
@@ -163,13 +186,9 @@
                 <div class="agent-block border rounded bg-white shadow-sm overflow-hidden">
                   <div class="d-flex align-items-center gap-2 px-3 py-2 bg-light border-bottom">
                     <div class="rounded-circle bg-white border d-flex align-items-center justify-content-center agent-icon-wrap">
-                      <i class="bi bi-lightning-charge-fill text-warning" v-if="step.agent === 'Orchestrator' || step.agent === 'Planner'"></i>
-                      <i class="bi bi-table text-success" v-else-if="step.agent === 'TableFinder' || step.agent === 'DataAnalyst'"></i>
-                      <i class="bi bi-bar-chart text-info" v-else-if="step.agent === 'Visualization'"></i>
-                      <i class="bi bi-file-earmark-text text-primary" v-else-if="step.agent === 'ReportWriter'"></i>
-                      <i class="bi bi-robot text-primary" v-else></i>
+                      <i class="bi" :class="getAgentIconClass(step.agent)"></i>
                     </div>
-                    <span class="fw-semibold small">{{ step.agent }}</span>
+                    <span class="fw-semibold small">{{ getAgentDisplayName(step.agent) }}</span>
 
                     <div class="ms-auto d-flex align-items-center gap-2">
                       <template v-if="step.status === 'running'">
@@ -191,14 +210,14 @@
                     </div>
                   </div>
 
-                  <div class="px-3 py-3 markdown-body small" v-html="renderMarkdown(step.content)"></div>
+                  <div class="px-3 py-3 markdown-body small" v-html="renderMarkdown(step.content, msg.workspace)"></div>
                 </div>
               </div>
             </template>
 
             <div v-else class="message-bubble assistant-bubble">
               <div class="small fw-semibold mb-1">Agent</div>
-              <div class="message-text markdown-body" v-html="renderMarkdown(msg.text)"></div>
+              <div class="message-text markdown-body" v-html="renderMarkdown(msg.text, msg.workspace)"></div>
             </div>
           </div>
         </div>
@@ -207,15 +226,22 @@
       <div class="chat-footer">
         <div class="composer-shell">
           <form class="composer-form" @submit.prevent="submitPrompt">
-            <div v-if="selectedFileAsset" class="composer-selection-row">
-              <div class="composer-selection-chip" :title="selectedFileAsset.path">
-                <span class="composer-selection-icon">
-                  <i class="bi" :class="selectedFileAsset?.extension === '.json' || selectedFileAsset?.extension === '.jsonl' ? 'bi-filetype-json' : 'bi-file-earmark-spreadsheet'"></i>
-                </span>
-                <span class="composer-selection-copy">
-                  <span class="composer-selection-label">Analyzing file</span>
-                  <span class="composer-selection-name">{{ selectedFileAsset.name }}</span>
-                </span>
+            <div v-if="queuedFileAssets.length" class="composer-selection-row">
+              <div class="composer-selection-header">
+                <span class="composer-selection-summary">{{ selectionSummaryText }}</span>
+                <span v-if="checkedFilePaths.length > 1" class="composer-selection-mode">Sequential analysis</span>
+              </div>
+              <div class="composer-selection-list">
+                <div v-for="file in queuedFileAssets" :key="file.path" class="composer-selection-chip" :title="file.path">
+                  <span class="composer-selection-icon">
+                    <i class="bi" :class="file.extension === '.json' || file.extension === '.jsonl' ? 'bi-filetype-json' : 'bi-file-earmark-spreadsheet'"></i>
+                  </span>
+                  <span class="composer-selection-copy">
+                    <span class="composer-selection-label">{{ queuedFileAssets.length > 1 ? 'Queued file' : 'Analyzing file' }}</span>
+                    <span class="composer-selection-name">{{ file.name }}</span>
+                    <span class="composer-selection-path">{{ file.path }}</span>
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -224,7 +250,7 @@
               v-model="chatPrompt"
               class="form-control composer"
               rows="2"
-              :placeholder="selectedFileAsset ? `Ask a question about ${selectedFileAsset.name}. Enter sends, Shift+Enter adds a new line.` : 'Ask a question about the uploaded files. Enter sends, Shift+Enter adds a new line.'"
+              :placeholder="composerPlaceholder"
               :disabled="isUploading"
               @keydown.enter.exact.prevent="submitPrompt"
               @input="adjustComposerHeight"
@@ -445,6 +471,7 @@ import {
   streamAgentInteractionChat,
   uploadAgentInteractionFile
 } from '../../api/dataAgent'
+import { config } from '../../config/global'
 
 const SERVER_DEFAULT_MODEL_ID = 'server-default'
 const MODEL_CONFIGS_STORAGE_KEY = 'datafactory.agentInteraction.modelConfigs.v1'
@@ -461,6 +488,7 @@ const assetTreeItems = ref([])
 const assetSummary = ref({ folder_count: 0, file_count: 0, total_size: 0 })
 const selectedAssetPath = ref('')
 const selectedAssetType = ref('folder')
+const checkedFilePaths = ref([])
 const expandedFolderPaths = ref([''])
 const isAssetsLoading = ref(false)
 const pendingFolderDraft = ref(null)
@@ -481,18 +509,46 @@ const isModelMenuOpen = ref(false)
 
 let modelConfigModalInstance = null
 
-const messages = ref([
-  {
-    id: 'm-init',
-    role: 'assistant',
-    text: 'Ready. Your saved folders and files are available on the left. Pick a model if needed, then start a conversation.',
-    agentSteps: []
-  }
-])
+const messages = ref([])
 
 const isBusy = computed(() => isUploading.value || isStreaming.value)
 const assetStatsText = computed(() => `${assetSummary.value.folder_count || 0} folders, ${assetSummary.value.file_count || 0} files saved for your account`)
 const selectedFileAsset = computed(() => findAssetNodeByPath(assetTreeItems.value, selectedAssetPath.value, 'file'))
+const checkedFilePathSet = computed(() => new Set(checkedFilePaths.value))
+const allFilePaths = computed(() =>
+  flattenAllAssetNodes(assetTreeItems.value, [])
+    .filter((node) => node.type === 'file')
+    .map((node) => node.path)
+)
+const checkedFileAssets = computed(() =>
+  checkedFilePaths.value
+    .map((path) => findAssetNodeByPath(assetTreeItems.value, path, 'file'))
+    .filter(Boolean)
+)
+const queuedFileAssets = computed(() => {
+  if (checkedFileAssets.value.length > 0) return checkedFileAssets.value
+  return selectedFileAsset.value ? [selectedFileAsset.value] : []
+})
+const selectionSummaryText = computed(() => {
+  if (checkedFileAssets.value.length > 1) return `${checkedFileAssets.value.length} files selected`
+  if (checkedFileAssets.value.length === 1) return '1 file selected'
+  if (selectedFileAsset.value) return 'Focused file'
+  return ''
+})
+const composerPlaceholder = computed(() => {
+  if (queuedFileAssets.value.length === 1) {
+    return `Ask a question about ${queuedFileAssets.value[0].name}. Enter sends, Shift+Enter adds a new line.`
+  }
+  if (queuedFileAssets.value.length > 1) {
+    return `Ask a question about ${queuedFileAssets.value.length} selected files. The agent will analyze them one by one. Enter sends, Shift+Enter adds a new line.`
+  }
+  return 'Ask a question about the uploaded files. Enter sends, Shift+Enter adds a new line.'
+})
+const isRootChecked = computed(() => allFilePaths.value.length > 0 && allFilePaths.value.every((path) => checkedFilePathSet.value.has(path)))
+const isRootIndeterminate = computed(() => {
+  const checkedCount = allFilePaths.value.filter((path) => checkedFilePathSet.value.has(path)).length
+  return checkedCount > 0 && checkedCount < allFilePaths.value.length
+})
 const currentTargetFolderPath = computed(() => {
   if (selectedAssetType.value === 'folder') return selectedAssetPath.value
   return parentAssetPath(selectedAssetPath.value)
@@ -532,6 +588,44 @@ function createModelId() {
 
 function cleanString(value) {
   return String(value || '').trim()
+}
+
+function getAgentDisplayName(agent) {
+  const normalized = cleanString(agent)
+  const labels = {
+    TrainingAuditLead: '训练数据质量评估总控',
+    Orchestrator: '评估总控',
+    Planner: '审计规划器',
+    TableFinder: '数据定位器',
+    DataAnalyst: '数据分析师',
+    DatasetProfiler: '数据质量分析师',
+    QualityAuditor: '质量审计员',
+    TrainingReadinessReviewer: '训练就绪度评审',
+    Visualization: '图表分析师',
+    ReportWriter: '报告生成器',
+    AuditReportWriter: '报告生成器'
+  }
+  return labels[normalized] || normalized || '智能体'
+}
+
+function getAgentIconClass(agent) {
+  const normalized = cleanString(agent)
+  if ([ 'TrainingAuditLead', 'Orchestrator', 'Planner' ].includes(normalized)) {
+    return 'bi-stars text-warning'
+  }
+  if ([ 'DatasetProfiler', 'QualityAuditor', 'DataAnalyst', 'TableFinder' ].includes(normalized)) {
+    return 'bi-clipboard-data text-success'
+  }
+  if (normalized === 'TrainingReadinessReviewer') {
+    return 'bi-shield-check text-danger'
+  }
+  if (normalized === 'Visualization') {
+    return 'bi-bar-chart-line text-info'
+  }
+  if ([ 'AuditReportWriter', 'ReportWriter' ].includes(normalized)) {
+    return 'bi-file-earmark-richtext text-primary'
+  }
+  return 'bi-robot text-primary'
 }
 
 function normalizeLocalHost(value) {
@@ -835,6 +929,18 @@ function flattenAllAssetNodes(nodes, rows = []) {
   return rows
 }
 
+function collectNodeFilePaths(node, rows = []) {
+  if (!node) return rows
+  if (node.type === 'file') {
+    rows.push(node.path)
+    return rows
+  }
+  if (node.type === 'folder' && Array.isArray(node.children)) {
+    node.children.forEach((child) => collectNodeFilePaths(child, rows))
+  }
+  return rows
+}
+
 function findAssetNodeByPath(nodes, targetPath, targetType = '') {
   const normalizedPath = cleanString(targetPath)
   if (!normalizedPath) return null
@@ -850,6 +956,73 @@ function findAssetNodeByPath(nodes, targetPath, targetType = '') {
   }
 
   return null
+}
+
+function normalizeCheckedFiles(allNodes = null) {
+  const sourceNodes = Array.isArray(allNodes) ? allNodes : flattenAllAssetNodes(assetTreeItems.value, [])
+  const validFilePaths = new Set(sourceNodes.filter((node) => node.type === 'file').map((node) => node.path))
+  const nextChecked = []
+  const seen = new Set()
+  checkedFilePaths.value.forEach((path) => {
+    const normalized = cleanString(path)
+    if (!normalized || seen.has(normalized) || !validFilePaths.has(normalized)) return
+    seen.add(normalized)
+    nextChecked.push(normalized)
+  })
+  checkedFilePaths.value = nextChecked
+}
+
+function hasSelectableFiles(node) {
+  return collectNodeFilePaths(node, []).length > 0
+}
+
+function isNodeChecked(node) {
+  const filePaths = collectNodeFilePaths(node, [])
+  return filePaths.length > 0 && filePaths.every((path) => checkedFilePathSet.value.has(path))
+}
+
+function isNodeIndeterminate(node) {
+  if (!node || node.type !== 'folder') return false
+  const filePaths = collectNodeFilePaths(node, [])
+  if (!filePaths.length) return false
+  const checkedCount = filePaths.filter((path) => checkedFilePathSet.value.has(path)).length
+  return checkedCount > 0 && checkedCount < filePaths.length
+}
+
+function updateCheckedFiles(nextPaths) {
+  const uniquePaths = []
+  const seen = new Set()
+  nextPaths.forEach((path) => {
+    const normalized = cleanString(path)
+    if (!normalized || seen.has(normalized)) return
+    seen.add(normalized)
+    uniquePaths.push(normalized)
+  })
+  checkedFilePaths.value = uniquePaths
+}
+
+function toggleNodeFilesSelection(node) {
+  const filePaths = collectNodeFilePaths(node, [])
+  if (!filePaths.length) return
+  const next = new Set(checkedFilePaths.value)
+  const allChecked = filePaths.every((path) => next.has(path))
+  if (allChecked) {
+    filePaths.forEach((path) => next.delete(path))
+  } else {
+    filePaths.forEach((path) => next.add(path))
+  }
+  updateCheckedFiles(Array.from(next))
+}
+
+function toggleRootFilesSelection() {
+  if (!allFilePaths.value.length) return
+  const next = new Set(checkedFilePaths.value)
+  if (isRootChecked.value) {
+    allFilePaths.value.forEach((path) => next.delete(path))
+  } else {
+    allFilePaths.value.forEach((path) => next.add(path))
+  }
+  updateCheckedFiles(Array.from(next))
 }
 
 function isFolderExpanded(path) {
@@ -918,6 +1091,7 @@ function flattenVisibleAssetRows(nodes, pendingDraft = null, depth = 0, rows = [
 
 function normalizeAssetSelection() {
   const allNodes = flattenAllAssetNodes(assetTreeItems.value, [])
+  normalizeCheckedFiles(allNodes)
   const validFolders = new Set([''])
   allNodes.filter((node) => node.type === 'folder').forEach((node) => validFolders.add(node.path))
   expandedFolderPaths.value = expandedFolderPaths.value.filter((path) => validFolders.has(path))
@@ -1082,11 +1256,74 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;')
 }
 
-function formatInlineMarkdown(value) {
+function escapeAttribute(value) {
+  return escapeHtml(value).replace(/`/g, '&#96;')
+}
+
+function normalizeArtifactReference(value) {
+  const raw = cleanString(value).replace(/\\/g, '/')
+  if (!raw) return ''
+  if (/^(https?:|data:|blob:)/i.test(raw)) return raw
+
+  let normalized = raw.replace(/^\.\//, '').replace(/^\//, '')
+  if (normalized.startsWith('../output/')) {
+    normalized = normalized.slice(3)
+  } else if (normalized.startsWith('../charts/')) {
+    normalized = `output/charts/${normalized.slice('../charts/'.length)}`
+  } else if (normalized.startsWith('charts/')) {
+    normalized = `output/charts/${normalized.slice('charts/'.length)}`
+  }
+
+  return normalized
+}
+
+function buildAgentArtifactUrl(value, workspace = '') {
+  const normalized = normalizeArtifactReference(value)
+  if (!normalized) return ''
+  if (/^(https?:|data:|blob:)/i.test(normalized)) return normalized
+
+  if (normalized.startsWith('output/')) {
+    return `${config.apiBase}/generated/${normalized.slice('output/'.length)}`
+  }
+
+  const params = new URLSearchParams({ path: normalized })
+  const workspaceName = cleanString(workspace)
+  if (workspaceName) {
+    params.set('workspace', workspaceName)
+  }
+  return `${config.apiBase}/chat/artifact?${params.toString()}`
+}
+
+function inferArtifactLabel(value, fallback = 'Generated chart') {
+  const normalized = normalizeArtifactReference(value)
+  if (!normalized) return fallback
+  const fileName = normalized.split('/').pop() || ''
+  const stem = fileName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim()
+  return stem || fallback
+}
+
+function renderMarkdownInlineImage(altText, value, workspace = '') {
+  const src = buildAgentArtifactUrl(value, workspace)
+  if (!src) return ''
+  const safeAlt = escapeAttribute(altText || inferArtifactLabel(value, 'Generated chart'))
+  const safeSrc = escapeAttribute(src)
+  return `<span class="md-inline-image-wrap"><img class="md-inline-image" src="${safeSrc}" alt="${safeAlt}" loading="lazy"></span>`
+}
+
+function renderMarkdownImageFigure(altText, value, workspace = '') {
+  const src = buildAgentArtifactUrl(value, workspace)
+  if (!src) return ''
+  const safeAlt = escapeAttribute(altText || inferArtifactLabel(value, 'Generated chart'))
+  const safeSrc = escapeAttribute(src)
+  return `<figure class="md-image"><img src="${safeSrc}" alt="${safeAlt}" loading="lazy"><figcaption>${safeAlt}</figcaption></figure>`
+}
+
+function formatInlineMarkdown(value, workspace = '') {
   let text = String(value || '')
   text = text.replace(/`([^`]+)`/g, '<code>$1</code>')
   text = text.replace(/\*\*([^*][\s\S]*?)\*\*/g, '<strong>$1</strong>')
   text = text.replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+  text = text.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_m, alt, artifactPath) => renderMarkdownInlineImage(alt, artifactPath, workspace))
   text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, label, url) => {
     const safeUrl = String(url).replace(/"/g, '%22')
     return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${label}</a>`
@@ -1105,11 +1342,12 @@ function isTableSeparatorRow(line) {
   return cells.every((cell) => /^:?-{3,}:?$/.test(cell))
 }
 
-function renderMarkdown(raw) {
+function renderMarkdown(raw, workspace = '') {
   const source = String(raw || '').replace(/\r\n?/g, '\n')
   if (!source.trim()) return ''
 
   const codeBlocks = []
+  const renderedArtifactPaths = new Set()
   const tokenized = source.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_m, lang, code) => {
     const idx = codeBlocks.length
     codeBlocks.push({ lang: String(lang || '').toLowerCase(), code: String(code || '') })
@@ -1124,7 +1362,7 @@ function renderMarkdown(raw) {
 
   const flushParagraph = () => {
     if (!paragraphLines.length) return
-    const html = paragraphLines.map((line) => formatInlineMarkdown(escapeHtml(line))).join('<br>')
+    const html = paragraphLines.map((line) => formatInlineMarkdown(escapeHtml(line), workspace)).join('<br>')
     blocks.push(`<p>${html}</p>`)
     paragraphLines = []
   }
@@ -1172,13 +1410,13 @@ function renderMarkdown(raw) {
     }
 
     const headHtml = normalizeCells(headerCells)
-      .map((cell) => `<th>${formatInlineMarkdown(escapeHtml(cell))}</th>`)
+      .map((cell) => `<th>${formatInlineMarkdown(escapeHtml(cell), workspace)}</th>`)
       .join('')
 
     const bodyHtml = bodyRows
       .map((row) => {
         const rowHtml = normalizeCells(row)
-          .map((cell) => `<td>${formatInlineMarkdown(escapeHtml(cell))}</td>`)
+          .map((cell) => `<td>${formatInlineMarkdown(escapeHtml(cell), workspace)}</td>`)
           .join('')
         return `<tr>${rowHtml}</tr>`
       })
@@ -1212,6 +1450,33 @@ function renderMarkdown(raw) {
       continue
     }
 
+    const standaloneImageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
+    if (standaloneImageMatch) {
+      flushParagraph()
+      flushList()
+      const normalizedPath = normalizeArtifactReference(standaloneImageMatch[2])
+      if (normalizedPath && !renderedArtifactPaths.has(normalizedPath)) {
+        renderedArtifactPaths.add(normalizedPath)
+        blocks.push(renderMarkdownImageFigure(standaloneImageMatch[1], standaloneImageMatch[2], workspace))
+      }
+      lineIndex += 1
+      continue
+    }
+
+    const artifactPathMatch = trimmed.match(/^(?:\u8def\u5f84|path)\s*[:\uff1a]\s*([^\s]+\.(?:png|jpe?g|gif|svg|webp))$/i)
+    if (artifactPathMatch) {
+      flushParagraph()
+      flushList()
+      blocks.push(`<p>${formatInlineMarkdown(escapeHtml(line), workspace)}</p>`)
+      const normalizedPath = normalizeArtifactReference(artifactPathMatch[1])
+      if (normalizedPath && !renderedArtifactPaths.has(normalizedPath)) {
+        renderedArtifactPaths.add(normalizedPath)
+        blocks.push(renderMarkdownImageFigure(inferArtifactLabel(artifactPathMatch[1]), artifactPathMatch[1], workspace))
+      }
+      lineIndex += 1
+      continue
+    }
+
     const table = parseTableAt(lineIndex)
     if (table) {
       flushParagraph()
@@ -1226,7 +1491,7 @@ function renderMarkdown(raw) {
       flushParagraph()
       flushList()
       const level = headingMatch[1].length
-      const content = formatInlineMarkdown(escapeHtml(headingMatch[2]))
+      const content = formatInlineMarkdown(escapeHtml(headingMatch[2]), workspace)
       blocks.push(`<h${level}>${content}</h${level}>`)
       lineIndex += 1
       continue
@@ -1245,7 +1510,7 @@ function renderMarkdown(raw) {
     if (quoteMatch) {
       flushParagraph()
       flushList()
-      const content = formatInlineMarkdown(escapeHtml(quoteMatch[1]))
+      const content = formatInlineMarkdown(escapeHtml(quoteMatch[1]), workspace)
       blocks.push(`<blockquote>${content}</blockquote>`)
       lineIndex += 1
       continue
@@ -1256,7 +1521,7 @@ function renderMarkdown(raw) {
       flushParagraph()
       if (listMode && listMode !== 'ol') flushList()
       listMode = 'ol'
-      listItems.push(`<li>${formatInlineMarkdown(escapeHtml(orderedMatch[1]))}</li>`)
+      listItems.push(`<li>${formatInlineMarkdown(escapeHtml(orderedMatch[1]), workspace)}</li>`)
       lineIndex += 1
       continue
     }
@@ -1266,7 +1531,7 @@ function renderMarkdown(raw) {
       flushParagraph()
       if (listMode && listMode !== 'ul') flushList()
       listMode = 'ul'
-      listItems.push(`<li>${formatInlineMarkdown(escapeHtml(unorderedMatch[1]))}</li>`)
+      listItems.push(`<li>${formatInlineMarkdown(escapeHtml(unorderedMatch[1]), workspace)}</li>`)
       lineIndex += 1
       continue
     }
@@ -1295,7 +1560,8 @@ function appendAssistantNote(text) {
     id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     role: 'assistant',
     text: String(text || ''),
-    agentSteps: []
+    agentSteps: [],
+    workspace: ''
   })
 }
 
@@ -1308,10 +1574,19 @@ function appendUserMessage(text) {
   })
 }
 
-function appendAssistantPlaceholder() {
+function appendAssistantPlaceholder(workspace = '') {
   const id = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-  messages.value.push({ id, role: 'assistant', text: '', agentSteps: [] })
+  messages.value.push({ id, role: 'assistant', text: '', agentSteps: [], workspace: cleanString(workspace) })
   return id
+}
+
+function setAssistantMessageWorkspace(messageId, workspace) {
+  const normalizedWorkspace = cleanString(workspace)
+  if (!normalizedWorkspace) return
+  updateAssistantMessage(messageId, (msg) => ({
+    ...msg,
+    workspace: normalizedWorkspace
+  }))
 }
 
 function extractUpdateContent(content, preferredKeys = []) {
@@ -1516,6 +1791,7 @@ async function onFilesChange(event) {
 
 async function submitPrompt() {
   const prompt = chatPrompt.value.trim()
+  const queuedFiles = queuedFileAssets.value
   if (!prompt || isBusy.value) return
   if (!Number(assetSummary.value.file_count || 0)) {
     notice.value = 'Please upload at least one context file first.'
@@ -1527,7 +1803,7 @@ async function submitPrompt() {
   notice.value = ''
 
   appendUserMessage(prompt)
-  const assistantMessageId = appendAssistantPlaceholder()
+  const assistantMessageId = appendAssistantPlaceholder(workspaceId.value)
   const streamController = new AbortController()
   currentStreamController.value = streamController
 
@@ -1539,7 +1815,8 @@ async function submitPrompt() {
         query: prompt,
         workspace: workspaceId.value,
         request_id: sessionId.value || undefined,
-        selected_file_path: selectedFileAsset.value?.path || undefined,
+        selected_file_path: queuedFiles.length === 1 ? queuedFiles[0].path : undefined,
+        selected_file_paths: queuedFiles.length ? queuedFiles.map((file) => file.path) : undefined,
         model_config: buildSelectedModelPayload()
       },
       {
@@ -1548,6 +1825,11 @@ async function submitPrompt() {
           const openedSessionId = String(data?.session_id || '').trim()
           if (openedSessionId) {
             sessionId.value = openedSessionId
+          }
+          const openedWorkspace = cleanString(data?.workspace)
+          if (openedWorkspace) {
+            workspaceId.value = openedWorkspace
+            setAssistantMessageWorkspace(assistantMessageId, openedWorkspace)
           }
         },
         onDelta: (update) => {
@@ -1728,6 +2010,45 @@ watch(
   flex-shrink: 0;
 }
 
+.asset-checkbox-slot,
+.asset-checkbox-spacer {
+  width: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.asset-checkbox-input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1.5px solid #60a5fa;
+  box-shadow: none;
+}
+
+.asset-checkbox-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 0.16rem rgba(37, 99, 235, 0.18);
+}
+
+.asset-checkbox-input:checked {
+  background-color: #2563eb;
+  border-color: #2563eb;
+}
+
+.asset-checkbox-input:indeterminate {
+  background-color: #93c5fd;
+  border-color: #2563eb;
+}
+
+.asset-checkbox-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .asset-main-btn {
   min-width: 0;
   flex: 1;
@@ -1814,8 +2135,8 @@ watch(
 }
 
 .asset-icon.folder {
-  background: #fff7ed;
-  color: #c2410c;
+  background: #dbeafe;
+  color: #2563eb;
 }
 
 .asset-icon.file {
@@ -2104,12 +2425,50 @@ watch(
   margin-bottom: 0.45rem;
 }
 
+.composer-selection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-bottom: 0.45rem;
+}
+
+.composer-selection-summary {
+  font-size: 0.68rem;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.composer-selection-mode {
+  flex-shrink: 0;
+  padding: 0.16rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.composer-selection-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  max-height: 112px;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
 .composer-selection-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.48rem;
   min-height: 34px;
-  max-width: 100%;
+  max-width: min(100%, 320px);
+  flex: 0 1 320px;
   padding: 0.34rem 0.55rem;
   border-radius: 12px;
   background: #f8fafc;
@@ -2148,6 +2507,14 @@ watch(
   font-size: 0.84rem;
   font-weight: 600;
   color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-selection-path {
+  font-size: 0.72rem;
+  color: #64748b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2388,6 +2755,36 @@ watch(
   text-decoration: underline;
 }
 
+.markdown-body :deep(figure.md-image) {
+  margin: 0.75rem 0;
+}
+
+.markdown-body :deep(figure.md-image img) {
+  display: block;
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid #d6dfec;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.markdown-body :deep(figure.md-image figcaption) {
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.markdown-body :deep(.md-inline-image-wrap) {
+  display: inline-flex;
+  margin: 0.25rem 0;
+}
+
+.markdown-body :deep(.md-inline-image) {
+  max-width: min(100%, 520px);
+  border-radius: 10px;
+  border: 1px solid #d6dfec;
+}
+
 .agent-step-container {
   width: 100%;
 }
@@ -2468,6 +2865,16 @@ watch(
 
   .composer-left-actions {
     width: 100%;
+  }
+
+  .composer-selection-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .composer-selection-chip {
+    max-width: 100%;
+    flex-basis: 100%;
   }
 
   .model-picker {

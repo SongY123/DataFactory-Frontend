@@ -210,43 +210,49 @@
 
               <input v-model.trim="datasetForm.source" type="text" class="form-control" placeholder="Source URI (optional)">
 
-              <div class="row g-2">
+              <div class="row g-3">
                 <div class="col-12 col-md-6">
-                  <select v-model="datasetForm.language" class="form-select">
-                    <option value="zh">Chinese</option>
-                    <option value="en">English</option>
-                    <option value="multi">Multilingual</option>
-                  </select>
+                  <div class="upload-picker h-100">
+                    <select v-model="datasetForm.language" class="form-select">
+                      <option value="zh">Chinese</option>
+                      <option value="en">English</option>
+                      <option value="multi">Multilingual</option>
+                    </select>
+                    <input
+                      class="d-none"
+                      type="file"
+                      accept=".csv,.json,.jsonl,.txt,.zip"
+                      multiple
+                      webkitdirectory
+                      directory
+                      @change="onDatasetFilesChange"
+                      ref="datasetFilesInputRef"
+                    >
+                    <button class="upload-picker-button" type="button" @click="triggerDatasetFolderPicker">
+                      <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                      <span>Dataset folder</span>
+                    </button>
+                    <div class="upload-picker-status">{{ selectedFolderLabel }}</div>
+                    <div class="upload-picker-hint">Select the folder that contains your dataset files.</div>
+                  </div>
                 </div>
                 <div class="col-12 col-md-6">
-                  <input
-                    class="form-control"
-                    type="file"
-                    accept=".csv,.json,.jsonl,.txt,.zip"
-                    multiple
-                    webkitdirectory
-                    directory
-                    @change="onDatasetFilesChange"
-                    ref="datasetFilesInputRef"
-                    required
-                  >
+                  <div class="upload-picker h-100">
+                    <input
+                      class="d-none"
+                      type="file"
+                      accept="image/*"
+                      @change="onCoverFileChange"
+                      ref="coverFileInputRef"
+                    >
+                    <button class="upload-picker-button" type="button" @click="triggerCoverFilePicker">
+                      <i class="bi bi-image" aria-hidden="true"></i>
+                      <span>Cover image</span>
+                    </button>
+                    <div class="upload-picker-status">{{ selectedCoverLabel }}</div>
+                    <div class="upload-picker-hint">Optional. Add one preview image for this dataset.</div>
+                  </div>
                 </div>
-              </div>
-              <div class="small text-muted">
-                Dataset folder: {{ selectedFolderLabel }}
-              </div>
-
-              <div>
-                <input
-                  class="form-control"
-                  type="file"
-                  accept="image/*"
-                  @change="onCoverFileChange"
-                  ref="coverFileInputRef"
-                >
-              </div>
-              <div class="small text-muted">
-                Cover image: {{ selectedCoverLabel }}
               </div>
 
               <textarea
@@ -413,19 +419,27 @@ const onCoverFileChange = (event) => {
   selectedCoverFile.value = files && files.length > 0 ? files[0] : null
 }
 
+const triggerDatasetFolderPicker = () => {
+  datasetFilesInputRef.value?.click()
+}
+
+const triggerCoverFilePicker = () => {
+  coverFileInputRef.value?.click()
+}
+
 const onEditCoverChange = (event) => {
   const files = event?.target?.files
   editCoverFile.value = files && files.length > 0 ? files[0] : null
 }
 
 const selectedFolderLabel = computed(() => {
-  if (selectedDatasetFiles.value.length === 0) return 'No folder selected'
+  if (selectedDatasetFiles.value.length === 0) return 'No dataset folder selected'
   const first = selectedDatasetFiles.value[0]?.webkitRelativePath || selectedDatasetFiles.value[0]?.name || ''
-  const folderName = first.includes('/') ? first.split('/')[0] : 'selected files'
+  const folderName = first.includes('/') ? first.split('/')[0] : 'Selected files'
   return `${folderName} (${selectedDatasetFiles.value.length} files)`
 })
 
-const selectedCoverLabel = computed(() => selectedCoverFile.value?.name || 'No cover selected')
+const selectedCoverLabel = computed(() => selectedCoverFile.value?.name || 'No cover image selected')
 const editCoverLabel = computed(() => editCoverFile.value?.name || 'No new cover selected')
 
 const setViewMode = (mode) => {
@@ -677,6 +691,52 @@ onBeforeUnmount(() => {
   background: #f8f9fa;
   color: #6c757d;
   font-size: 0.875rem;
+}
+
+.upload-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.9rem;
+  border: 1px dashed #d7dee7;
+  border-radius: 14px;
+  background: #fbfcfe;
+}
+
+.upload-picker-button {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #cfd8e3;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.upload-picker-button:hover {
+  border-color: #9fb4cc;
+  background: #f8fafc;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.upload-picker-status {
+  color: #334155;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.upload-picker-hint {
+  color: #64748b;
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 .view-mode-toggle {
