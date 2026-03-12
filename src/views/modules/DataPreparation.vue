@@ -5,10 +5,6 @@
         <h4 class="mb-1">Data Preparation</h4>
         <p class="text-muted mb-0">Upload datasets, view uploaded list, and inspect sample data.</p>
       </div>
-      <button class="btn btn-outline-primary btn-sm" type="button" @click="refreshDatasets" :disabled="isLoading">
-        <span v-if="isLoading" class="spinner-border spinner-border-sm me-1" role="status"></span>
-        Refresh
-      </button>
     </div>
 
     <div v-if="notice" class="alert alert-warning py-2 px-3" role="alert">
@@ -22,7 +18,7 @@
           <p class="text-muted small mb-0">Click to open upload form in a modal.</p>
         </div>
         <button class="btn btn-primary" type="button" @click="openUploadModal">
-          Upload Dataset
+          Upload
         </button>
       </div>
     </article>
@@ -32,9 +28,35 @@
         <div class="d-flex align-items-center justify-content-between mb-2">
           <h6 class="card-title mb-0">Uploaded Datasets</h6>
           <div class="d-flex align-items-center gap-2">
-            <button class="btn btn-outline-secondary btn-sm" type="button" @click="toggleViewMode">
-              {{ viewMode === 'list' ? 'Switch to Card View' : 'Switch to List View' }}
-            </button>
+            <div class="view-mode-toggle" role="group" aria-label="Dataset view mode">
+              <button
+                class="view-mode-button"
+                :class="{ active: viewMode === 'list' }"
+                type="button"
+                @click="setViewMode('list')"
+              >
+                <span class="view-mode-icon list" aria-hidden="true">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </span>
+                <span>List</span>
+              </button>
+              <button
+                class="view-mode-button"
+                :class="{ active: viewMode === 'card' }"
+                type="button"
+                @click="setViewMode('card')"
+              >
+                <span class="view-mode-icon card" aria-hidden="true">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </span>
+                <span>Card</span>
+              </button>
+            </div>
             <span class="badge text-bg-light">{{ datasetRows.length }} datasets</span>
           </div>
         </div>
@@ -57,8 +79,7 @@
               v-for="row in datasetRows"
               :key="row.id"
               class="dataset-row"
-              :class="{ active: selectedDatasetId === row.id }"
-              @click="openDatasetDetail(row.id)"
+              
             >
               <td>{{ row.name }}</td>
               <td>{{ row.type }}</td>
@@ -69,7 +90,8 @@
               </td>
               <td>{{ row.updatedAt }}</td>
               <td>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 flex-wrap">
+                  <button class="btn btn-primary btn-sm" type="button" @click.stop="goToDatasetDetail(row.id)">Details</button>
                   <button class="btn btn-outline-secondary btn-sm" type="button" @click.stop="openSampleDetail(row)">Sample Detail</button>
                   <button class="btn btn-outline-primary btn-sm" type="button" @click.stop="startEditDataset(row)">Edit</button>
                   <button class="btn btn-outline-danger btn-sm" type="button" @click.stop="removeDataset(row)">Delete</button>
@@ -84,8 +106,7 @@
           <div v-for="row in datasetRows" :key="`card-${row.id}`" class="col-12 col-md-6 col-xl-4">
             <article
               class="card h-100 dataset-card"
-              :class="{ active: selectedDatasetId === row.id }"
-              @click="openDatasetDetail(row.id)"
+              
             >
               <img
                 v-if="row.cover"
@@ -102,6 +123,7 @@
                   <span class="badge" :class="statusClass(row.status)">{{ row.status }}</span>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
+                  <button class="btn btn-primary btn-sm" type="button" @click.stop="goToDatasetDetail(row.id)">Details</button>
                   <button class="btn btn-outline-secondary btn-sm" type="button" @click.stop="openSampleDetail(row)">Sample Detail</button>
                   <button class="btn btn-outline-primary btn-sm" type="button" @click.stop="startEditDataset(row)">Edit</button>
                   <button class="btn btn-outline-danger btn-sm" type="button" @click.stop="removeDataset(row)">Delete</button>
@@ -165,30 +187,6 @@
             </button>
           </div>
         </form>
-      </div>
-    </article>
-
-    <article v-if="selectedDataset" class="card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h6 class="card-title mb-0">Dataset Detail</h6>
-          <span class="badge text-bg-primary">{{ selectedDataset.name }}</span>
-        </div>
-
-        <div class="row g-2 small mb-3">
-          <div class="col-6 col-lg-3"><strong>ID:</strong> {{ selectedDataset.id }}</div>
-          <div class="col-6 col-lg-3"><strong>Type:</strong> {{ selectedDataset.type }}</div>
-          <div class="col-6 col-lg-3"><strong>Language:</strong> {{ selectedDataset.language }}</div>
-          <div class="col-6 col-lg-3"><strong>Size:</strong> {{ formatSize(selectedDataset.size) }}</div>
-          <div class="col-12"><strong>Source:</strong> {{ selectedDataset.source || '-' }}</div>
-          <div class="col-12"><strong>Note:</strong> {{ selectedDataset.note || '-' }}</div>
-        </div>
-
-        <div class="d-flex justify-content-end">
-          <button class="btn btn-outline-secondary btn-sm" type="button" @click="openSampleDetail(selectedDataset)">
-            View Sample Data
-          </button>
-        </div>
       </div>
     </article>
 
@@ -262,7 +260,7 @@
                 <button class="btn btn-outline-secondary" type="button" @click="closeUploadModal">Cancel</button>
                 <button class="btn btn-primary" type="submit" :disabled="isSubmitting">
                   <span v-if="isSubmitting" class="spinner-border spinner-border-sm me-1" role="status"></span>
-                  Upload Dataset
+                  Upload
                 </button>
               </div>
             </form>
@@ -312,6 +310,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
 import {
   createDataset,
@@ -328,9 +327,8 @@ const isSubmitting = ref(false)
 const isSavingEdit = ref(false)
 const isLoadingSampleDetail = ref(false)
 const notice = ref('')
+const router = useRouter()
 
-const selectedDatasetId = ref(null)
-const selectedDataset = ref(null)
 const sampleDetailRows = ref([])
 const sampleDetailDatasetName = ref('')
 const selectedDatasetFiles = ref([])
@@ -341,7 +339,7 @@ const coverFileInputRef = ref(null)
 const editCoverInputRef = ref(null)
 const uploadModalRef = ref(null)
 const sampleModalRef = ref(null)
-const viewMode = ref('list')
+const viewMode = ref('card')
 let uploadModalInstance = null
 let sampleModalInstance = null
 
@@ -430,8 +428,8 @@ const selectedFolderLabel = computed(() => {
 const selectedCoverLabel = computed(() => selectedCoverFile.value?.name || 'No cover selected')
 const editCoverLabel = computed(() => editCoverFile.value?.name || 'No new cover selected')
 
-const toggleViewMode = () => {
-  viewMode.value = viewMode.value === 'list' ? 'card' : 'list'
+const setViewMode = (mode) => {
+  viewMode.value = mode === 'card' ? 'card' : 'list'
 }
 
 const resetUploadInputs = () => {
@@ -477,16 +475,8 @@ const refreshDatasets = async () => {
     datasetRows.value = normalized
 
     if (normalized.length === 0) {
-      selectedDatasetId.value = null
-      selectedDataset.value = null
       return
     }
-
-    const stillExists = normalized.some((item) => item.id === selectedDatasetId.value)
-    if (!stillExists) {
-      selectedDatasetId.value = normalized[0].id
-    }
-    await openDatasetDetail(selectedDatasetId.value)
   } catch (error) {
     notice.value = `Backend unavailable. (${error?.message || 'unknown error'})`
   } finally {
@@ -494,26 +484,9 @@ const refreshDatasets = async () => {
   }
 }
 
-const openDatasetDetail = async (datasetId) => {
+const goToDatasetDetail = (datasetId) => {
   if (!datasetId) return
-  selectedDatasetId.value = datasetId
-  const row = datasetRows.value.find((item) => item.id === datasetId)
-
-  try {
-    const response = await fetchDatasetDetail(datasetId)
-    const detail = response?.data || response
-    selectedDataset.value = {
-      id: detail?.id ?? row?.id,
-      name: detail?.name ?? row?.name,
-      type: detail?.type ?? row?.type,
-      language: detail?.language ?? row?.language,
-      size: Number(detail?.size ?? row?.size ?? 0),
-      source: detail?.source ?? row?.source ?? '',
-      note: detail?.note ?? row?.note ?? ''
-    }
-  } catch {
-    selectedDataset.value = row || null
-  }
+  router.push(`/data-preparation/${datasetId}`)
 }
 
 const openSampleDetail = async (row) => {
@@ -679,16 +652,8 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
 }
 
-.dataset-row {
-  cursor: pointer;
-}
-
-.dataset-row.active {
-  --bs-table-bg: #f0f8ff;
-}
 
 .dataset-card {
-  cursor: pointer;
   border: 1px solid #e9ecef;
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
@@ -698,9 +663,6 @@ onBeforeUnmount(() => {
   transform: translateY(-2px);
 }
 
-.dataset-card.active {
-  border-color: #0d6efd;
-}
 
 .dataset-cover {
   height: 150px;
@@ -715,6 +677,74 @@ onBeforeUnmount(() => {
   background: #f8f9fa;
   color: #6c757d;
   font-size: 0.875rem;
+}
+
+.view-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem;
+  border: 1px solid #d7dee7;
+  border-radius: 999px;
+  background: #f8fafc;
+  gap: 0.2rem;
+}
+
+.view-mode-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 0;
+  background: transparent;
+  color: #5f6b7a;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.view-mode-button:hover {
+  color: #1f2937;
+}
+
+.view-mode-button.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.view-mode-icon {
+  display: inline-grid;
+  flex-shrink: 0;
+}
+
+.view-mode-icon.list {
+  grid-template-columns: 1fr;
+  gap: 0.16rem;
+  width: 0.82rem;
+}
+
+.view-mode-icon.list span {
+  display: block;
+  width: 100%;
+  height: 0.12rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.view-mode-icon.card {
+  grid-template-columns: repeat(2, 0.28rem);
+  gap: 0.12rem;
+  width: 0.68rem;
+  height: 0.68rem;
+}
+
+.view-mode-icon.card span {
+  display: block;
+  width: 0.28rem;
+  height: 0.28rem;
+  border-radius: 0.12rem;
+  background: currentColor;
 }
 
 .sample-pre {
