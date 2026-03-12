@@ -156,71 +156,155 @@
 
     <section class="chat-panel card border-0 shadow-sm">
       <div class="chat-panel-header">
-        <div>
-          <h5 class="mb-1">Agent Interaction</h5>
+        <div class="chat-header-copy">
+          <span class="chat-header-eyebrow">Agent Interaction</span>
+          <div class="chat-header-controls">
+            <div ref="conversationPickerRef" class="conversation-picker">
+              <button
+                class="conversation-picker-btn"
+                type="button"
+                aria-label="Select chat page"
+                :aria-expanded="isConversationMenuOpen"
+                @click="toggleConversationMenu"
+              >
+                <span class="conversation-picker-icon" :class="{ live: activeConversation?.isStreaming }">
+                  <i class="bi bi-chat-square-text"></i>
+                </span>
+                <span class="conversation-picker-copy">
+                  <span class="conversation-picker-label">Chat page</span>
+                  <span class="conversation-picker-title">{{ activeConversation?.title || 'New chat' }}</span>
+                </span>
+                <span class="conversation-picker-count">{{ conversationTabsSummary }}</span>
+                <i class="bi bi-chevron-down conversation-picker-caret" :class="{ open: isConversationMenuOpen }"></i>
+              </button>
+
+              <div v-if="isConversationMenuOpen" class="conversation-picker-menu">
+                <div
+                  v-for="conversation in conversationPages"
+                  :key="conversation.id"
+                  class="conversation-menu-row"
+                  :class="{ active: conversation.id === activeConversationId }"
+                >
+                  <button
+                    class="conversation-menu-item"
+                    type="button"
+                    :aria-selected="conversation.id === activeConversationId"
+                    @click="switchConversation(conversation.id, { closeMenu: true })"
+                  >
+                    <span class="conversation-menu-indicator" :class="{ live: conversation.isStreaming }"></span>
+                    <span class="conversation-menu-copy">
+                      <span class="conversation-menu-title">{{ conversation.title }}</span>
+                      <span class="conversation-menu-meta">{{ getConversationMeta(conversation) }}</span>
+                    </span>
+                    <i v-if="conversation.id === activeConversationId" class="bi bi-check2 conversation-menu-check"></i>
+                  </button>
+
+                  <button
+                    v-if="conversationPages.length > 1"
+                    class="conversation-menu-close"
+                    type="button"
+                    :disabled="conversation.isStreaming || isUploading"
+                    title="Close chat"
+                    aria-label="Close chat"
+                    @click.stop="closeConversationTab(conversation.id)"
+                  >
+                    <i class="bi bi-x-lg"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <span class="chat-tabs-count">{{ conversationTabsSummary }}</span>
+          </div>
+        </div>
+
+        <div class="chat-header-actions">
+          <button
+            class="chat-add-btn"
+            type="button"
+            :disabled="!canCreateConversation"
+            title="Create a new chat page"
+            aria-label="Create a new chat page"
+            @click="createConversationTab"
+          >
+            <i class="bi bi-plus-lg"></i>
+            <span>New</span>
+          </button>
         </div>
       </div>
 
       <div v-if="notice" class="alert alert-info mx-3 mt-3 mb-0 py-2 px-3" role="alert">{{ notice }}</div>
 
       <div ref="chatBodyRef" class="chat-body">
-        <div
-          v-for="msg in messages"
-          :key="msg.id"
-          class="message-row"
-          :class="msg.role === 'user' ? 'user' : 'assistant'"
-        >
-          <div v-if="msg.role === 'user'" class="message-bubble user-bubble">
-            <div class="small fw-semibold mb-1">You</div>
-            <p class="mb-0 message-text-plain">{{ msg.text }}</p>
-          </div>
-
-          <div v-else class="assistant-message-shell">
-            <template v-if="msg.agentSteps && msg.agentSteps.length > 0">
-              <div v-for="(step, index) in msg.agentSteps" :key="`${msg.id}-${index}`" class="agent-step-container">
-                <div v-if="index > 0" class="step-connector">
-                  <div class="line" :class="{ 'line-running': step.status === 'running' || msg.agentSteps[index - 1].status === 'running' }"></div>
-                  <i class="bi bi-chevron-down arrow"></i>
-                </div>
-
-                <div class="agent-block border rounded bg-white shadow-sm overflow-hidden">
-                  <div class="d-flex align-items-center gap-2 px-3 py-2 bg-light border-bottom">
-                    <div class="rounded-circle bg-white border d-flex align-items-center justify-content-center agent-icon-wrap">
-                      <i class="bi" :class="getAgentIconClass(step.agent)"></i>
-                    </div>
-                    <span class="fw-semibold small">{{ getAgentDisplayName(step.agent) }}</span>
-
-                    <div class="ms-auto d-flex align-items-center gap-2">
-                      <template v-if="step.status === 'running'">
-                        <span class="step-running-label">Thinking</span>
-                        <button
-                          class="stream-control-btn stream-control-inline"
-                          type="button"
-                          :disabled="!isStreaming"
-                          title="Stop response"
-                          aria-label="Stop response"
-                          @click="stopStreaming"
-                        >
-                          <span class="stop-square-icon" aria-hidden="true"></span>
-                        </button>
-                      </template>
-                      <i v-else-if="step.status === 'done'" class="bi bi-check-circle-fill text-success"></i>
-                      <i v-else-if="step.status === 'stopped'" class="bi bi-stop-circle-fill text-warning"></i>
-                      <i v-else-if="step.status === 'error'" class="bi bi-exclamation-circle-fill text-danger"></i>
-                    </div>
-                  </div>
-
-                  <div class="px-3 py-3 markdown-body small" v-html="renderMarkdown(step.content, msg.workspace)"></div>
-                </div>
-              </div>
-            </template>
-
-            <div v-else class="message-bubble assistant-bubble">
-              <div class="small fw-semibold mb-1">Agent</div>
-              <div class="message-text markdown-body" v-html="renderMarkdown(msg.text, msg.workspace)"></div>
-            </div>
+        <div v-if="!messages.length" class="chat-empty-state">
+          <div class="chat-empty-card">
+            <span class="chat-empty-badge">{{ activeConversation?.title || 'New chat' }}</span>
+            <h6 class="mb-2">Start a new analysis thread</h6>
+            <p class="mb-0">
+              Select files on the left, then ask the agent a question. Each chat page keeps its own history, workspace, and response trace.
+            </p>
           </div>
         </div>
+
+        <template v-else>
+          <div
+            v-for="msg in messages"
+            :key="msg.id"
+            class="message-row"
+            :class="msg.role === 'user' ? 'user' : 'assistant'"
+          >
+            <div v-if="msg.role === 'user'" class="message-bubble user-bubble">
+              <div class="small fw-semibold mb-1">You</div>
+              <p class="mb-0 message-text-plain">{{ msg.text }}</p>
+            </div>
+
+            <div v-else class="assistant-message-shell">
+              <template v-if="msg.agentSteps && msg.agentSteps.length > 0">
+                <div v-for="(step, index) in msg.agentSteps" :key="`${msg.id}-${index}`" class="agent-step-container">
+                  <div v-if="index > 0" class="step-connector">
+                    <div class="line" :class="{ 'line-running': step.status === 'running' || msg.agentSteps[index - 1].status === 'running' }"></div>
+                    <i class="bi bi-chevron-down arrow"></i>
+                  </div>
+
+                  <div class="agent-block border rounded bg-white shadow-sm overflow-hidden">
+                    <div class="agent-block-header">
+                      <div class="rounded-circle bg-white border d-flex align-items-center justify-content-center agent-icon-wrap">
+                        <i class="bi" :class="getAgentIconClass(step.agent)"></i>
+                      </div>
+                      <span class="fw-semibold small">{{ getAgentDisplayName(step.agent) }}</span>
+
+                      <div class="ms-auto d-flex align-items-center gap-2">
+                        <template v-if="step.status === 'running'">
+                          <span class="step-running-label">Thinking</span>
+                          <button
+                            class="stream-control-btn stream-control-inline"
+                            type="button"
+                            :disabled="!isStreaming"
+                            title="Stop response"
+                            aria-label="Stop response"
+                            @click="stopStreaming"
+                          >
+                            <span class="stop-square-icon" aria-hidden="true"></span>
+                          </button>
+                        </template>
+                        <i v-else-if="step.status === 'done'" class="bi bi-check-circle-fill text-success"></i>
+                        <i v-else-if="step.status === 'stopped'" class="bi bi-stop-circle-fill text-warning"></i>
+                        <i v-else-if="step.status === 'error'" class="bi bi-exclamation-circle-fill text-danger"></i>
+                      </div>
+                    </div>
+
+                    <div class="agent-block-content markdown-body small" v-html="renderMarkdown(step.content, msg.workspace)"></div>
+                  </div>
+                </div>
+              </template>
+
+              <div v-else class="message-bubble assistant-bubble">
+                <div class="small fw-semibold mb-1">Agent</div>
+                <div class="message-text markdown-body" v-html="renderMarkdown(msg.text, msg.workspace)"></div>
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
 
       <div class="chat-footer">
@@ -249,7 +333,7 @@
               ref="composerRef"
               v-model="chatPrompt"
               class="form-control composer"
-              rows="2"
+              rows="1"
               :placeholder="composerPlaceholder"
               :disabled="isUploading"
               @keydown.enter.exact.prevent="submitPrompt"
@@ -319,7 +403,7 @@
                 v-else
                 class="stream-control-btn composer-action-btn stream-control-composer"
                 type="submit"
-                :disabled="!chatPrompt.trim() || isUploading"
+                :disabled="!chatPrompt.trim() || isBusy"
                 title="Send message"
                 aria-label="Send message"
               >
@@ -476,12 +560,15 @@ import { config } from '../../config/global'
 const SERVER_DEFAULT_MODEL_ID = 'server-default'
 const MODEL_CONFIGS_STORAGE_KEY = 'datafactory.agentInteraction.modelConfigs.v1'
 const ACTIVE_MODEL_STORAGE_KEY = 'datafactory.agentInteraction.activeModelId.v1'
+const MAX_CONVERSATION_PAGES = 6
+const CONVERSATION_TITLE_LIMIT = 30
 
 const fileInputRef = ref(null)
 const composerRef = ref(null)
 const chatBodyRef = ref(null)
 const modelConfigModalRef = ref(null)
 const modelPickerRef = ref(null)
+const conversationPickerRef = ref(null)
 const pendingFolderInputRef = ref(null)
 
 const assetTreeItems = ref([])
@@ -493,25 +580,54 @@ const expandedFolderPaths = ref([''])
 const isAssetsLoading = ref(false)
 const pendingFolderDraft = ref(null)
 const pendingUploadFolderPath = ref('')
-const workspaceId = ref(makeWorkspaceId())
-const sessionId = ref('')
-const chatPrompt = ref('')
-const notice = ref('')
 const isUploading = ref(false)
-const isStreaming = ref(false)
-const currentStreamController = ref(null)
 const savedModelConfigs = ref(loadStoredModelConfigs())
 const activeModelId = ref(loadStoredActiveModelId(savedModelConfigs.value))
 const editingModelId = ref('')
 const modelFormError = ref('')
 const modelForm = ref(createEmptyModelForm())
 const isModelMenuOpen = ref(false)
+const isConversationMenuOpen = ref(false)
+const conversationPages = ref([createConversationPage(1)])
+const activeConversationId = ref(conversationPages.value[0].id)
+const nextConversationNumber = ref(2)
 
 let modelConfigModalInstance = null
 
-const messages = ref([])
+const activeConversation = computed(() =>
+  conversationPages.value.find((item) => item.id === activeConversationId.value) || conversationPages.value[0] || null
+)
+const messages = computed(() => activeConversation.value?.messages || [])
+const chatPrompt = computed({
+  get: () => activeConversation.value?.chatPrompt || '',
+  set: (value) => {
+    if (activeConversation.value) activeConversation.value.chatPrompt = String(value ?? '')
+  }
+})
+const workspaceId = computed({
+  get: () => activeConversation.value?.workspaceId || makeWorkspaceId(),
+  set: (value) => {
+    if (activeConversation.value) activeConversation.value.workspaceId = cleanString(value) || makeWorkspaceId()
+  }
+})
+const sessionId = computed({
+  get: () => activeConversation.value?.sessionId || '',
+  set: (value) => {
+    if (activeConversation.value) activeConversation.value.sessionId = cleanString(value)
+  }
+})
+const notice = computed({
+  get: () => activeConversation.value?.notice || '',
+  set: (value) => {
+    if (activeConversation.value) activeConversation.value.notice = String(value || '')
+  }
+})
+const isStreaming = computed(() => !!activeConversation.value?.isStreaming)
+const isAnyConversationStreaming = computed(() => conversationPages.value.some((item) => item.isStreaming))
+const conversationTabsSummary = computed(() => `${conversationPages.value.length} chat${conversationPages.value.length === 1 ? '' : 's'}`)
+const canCreateConversation = computed(() => conversationPages.value.length < MAX_CONVERSATION_PAGES && !isUploading.value)
 
-const isBusy = computed(() => isUploading.value || isStreaming.value)
+const isBusy = computed(() => isUploading.value || isAnyConversationStreaming.value)
 const assetStatsText = computed(() => `${assetSummary.value.folder_count || 0} folders, ${assetSummary.value.file_count || 0} files saved for your account`)
 const selectedFileAsset = computed(() => findAssetNodeByPath(assetTreeItems.value, selectedAssetPath.value, 'file'))
 const checkedFilePathSet = computed(() => new Set(checkedFilePaths.value))
@@ -586,13 +702,117 @@ function createModelId() {
   return `model-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function makeConversationId() {
+  return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 function cleanString(value) {
   return String(value || '').trim()
+}
+
+function createConversationPage(sequence = 1) {
+  return {
+    id: makeConversationId(),
+    title: `Chat ${sequence}`,
+    isUntitled: true,
+    workspaceId: makeWorkspaceId(),
+    sessionId: '',
+    chatPrompt: '',
+    notice: '',
+    isStreaming: false,
+    currentStreamController: null,
+    messages: []
+  }
+}
+
+function getConversationById(conversationId = activeConversationId.value) {
+  return conversationPages.value.find((item) => item.id === conversationId) || null
+}
+
+function abbreviateConversationTitle(value, limit = CONVERSATION_TITLE_LIMIT) {
+  const normalized = cleanString(value).replace(/\s+/g, ' ')
+  if (!normalized) return ''
+  if (normalized.length <= limit) return normalized
+  return `${normalized.slice(0, Math.max(6, limit - 1)).trim()}…`
+}
+
+function deriveConversationTitle(prompt, queuedFiles = []) {
+  const promptTitle = abbreviateConversationTitle(prompt)
+  if (queuedFiles.length === 1) {
+    return abbreviateConversationTitle(queuedFiles[0]?.name || promptTitle || 'Chat')
+  }
+  if (queuedFiles.length > 1) {
+    return abbreviateConversationTitle(`${queuedFiles.length} files`)
+  }
+  return promptTitle || ''
+}
+
+function updateConversationTitleFromPrompt(conversationId, prompt, queuedFiles = []) {
+  const conversation = getConversationById(conversationId)
+  if (!conversation || !conversation.isUntitled) return
+  const derivedTitle = deriveConversationTitle(prompt, queuedFiles)
+  if (!derivedTitle) return
+  conversation.title = derivedTitle
+  conversation.isUntitled = false
+}
+
+function createConversationTab() {
+  if (!canCreateConversation.value) return
+  const nextConversation = createConversationPage(nextConversationNumber.value)
+  nextConversationNumber.value += 1
+  conversationPages.value.push(nextConversation)
+  activeConversationId.value = nextConversation.id
+  isConversationMenuOpen.value = false
+  nextTick(() => {
+    adjustComposerHeight()
+    composerRef.value?.focus()
+  })
+}
+
+function switchConversation(conversationId, options = {}) {
+  if (!getConversationById(conversationId)) return
+  if (activeConversationId.value !== conversationId) activeConversationId.value = conversationId
+  if (options.closeMenu) isConversationMenuOpen.value = false
+}
+
+function closeConversationTab(conversationId) {
+  if (conversationPages.value.length === 1) return
+  const index = conversationPages.value.findIndex((item) => item.id === conversationId)
+  if (index < 0) return
+
+  const conversation = conversationPages.value[index]
+  if (conversation.isStreaming || isUploading.value) return
+
+  const hasContent = conversation.messages.length > 0 || cleanString(conversation.chatPrompt)
+  if (hasContent && typeof window !== 'undefined') {
+    const confirmed = window.confirm(`Close "${conversation.title}"? This chat page will be removed.`)
+    if (!confirmed) return
+  }
+
+  conversationPages.value.splice(index, 1)
+  if (activeConversationId.value === conversationId) {
+    const fallbackConversation = conversationPages.value[Math.max(0, index - 1)] || conversationPages.value[0]
+    if (fallbackConversation) activeConversationId.value = fallbackConversation.id
+  }
+  nextTick(() => adjustComposerHeight())
+}
+
+function getConversationMeta(conversation) {
+  if (!conversation) return ''
+  if (conversation.isStreaming) return 'Responding now'
+  const messageCount = Array.isArray(conversation.messages) ? conversation.messages.length : 0
+  if (!messageCount) return 'Empty chat'
+  return `${messageCount} message${messageCount === 1 ? '' : 's'}`
 }
 
 function getAgentDisplayName(agent) {
   const normalized = cleanString(agent)
   const labels = {
+    Analyze: 'Analyze',
+    Understand: 'Understand',
+    Code: 'Code',
+    Execute: 'Execute',
+    Answer: 'Answer',
     TrainingAuditLead: '训练数据质量评估总控',
     Orchestrator: '评估总控',
     Planner: '审计规划器',
@@ -610,6 +830,21 @@ function getAgentDisplayName(agent) {
 
 function getAgentIconClass(agent) {
   const normalized = cleanString(agent)
+  if (normalized === 'Analyze') {
+    return 'bi-search text-info'
+  }
+  if (normalized === 'Understand') {
+    return 'bi-lightbulb text-warning'
+  }
+  if (normalized === 'Code') {
+    return 'bi-code-slash text-primary'
+  }
+  if (normalized === 'Execute') {
+    return 'bi-play-circle text-success'
+  }
+  if (normalized === 'Answer') {
+    return 'bi-chat-dots text-primary'
+  }
   if ([ 'TrainingAuditLead', 'Orchestrator', 'Planner' ].includes(normalized)) {
     return 'bi-stars text-warning'
   }
@@ -727,6 +962,7 @@ function closeModelConfigModal() {
 
 function toggleModelMenu() {
   if (isBusy.value) return
+  isConversationMenuOpen.value = false
   isModelMenuOpen.value = !isModelMenuOpen.value
 }
 
@@ -734,11 +970,21 @@ function closeModelMenu() {
   isModelMenuOpen.value = false
 }
 
-function handleDocumentPointerDown(event) {
-  const root = modelPickerRef.value
-  if (!root) return
-  if (root.contains(event.target)) return
+function toggleConversationMenu() {
   isModelMenuOpen.value = false
+  isConversationMenuOpen.value = !isConversationMenuOpen.value
+}
+
+function handleDocumentPointerDown(event) {
+  const modelRoot = modelPickerRef.value
+  if (modelRoot && !modelRoot.contains(event.target)) {
+    isModelMenuOpen.value = false
+  }
+
+  const conversationRoot = conversationPickerRef.value
+  if (conversationRoot && !conversationRoot.contains(event.target)) {
+    isConversationMenuOpen.value = false
+  }
 }
 
 function setModelFormMode(mode) {
@@ -764,11 +1010,26 @@ function validateModelForm() {
   return ''
 }
 
-function applyConversationReset(reason, { resetWorkspace = false } = {}) {
-  const hadConversation = sessionId.value || messages.value.length > 1
-  sessionId.value = ''
-  if (resetWorkspace) workspaceId.value = makeWorkspaceId()
-  if (hadConversation && reason) appendAssistantNote(reason)
+function applyConversationReset(reason, { resetWorkspace = false, conversationId = activeConversationId.value } = {}) {
+  const conversation = getConversationById(conversationId)
+  if (!conversation) return
+  const hadConversation = cleanString(conversation.sessionId) || conversation.messages.length > 0
+  conversation.sessionId = ''
+  if (resetWorkspace) conversation.workspaceId = makeWorkspaceId()
+  if (hadConversation && reason) appendAssistantNote(reason, conversationId)
+}
+
+function applyConversationResetToAll(reason, { resetWorkspace = false } = {}) {
+  conversationPages.value.forEach((conversation) => {
+    conversation.sessionId = ''
+    if (resetWorkspace) conversation.workspaceId = makeWorkspaceId()
+  })
+  if (reason) {
+    applyConversationReset(reason, {
+      resetWorkspace: false,
+      conversationId: activeConversationId.value
+    })
+  }
 }
 
 function selectModel(modelId, options = {}) {
@@ -780,9 +1041,8 @@ function selectModel(modelId, options = {}) {
 
   if (changed && !options.silent) {
     notice.value = ''
-    applyConversationReset('Model changed. The next prompt will use the selected model.', {
-      resetWorkspace: false,
-      resetSync: false
+    applyConversationResetToAll('Model changed. The next prompt will use the selected model.', {
+      resetWorkspace: false
     })
   }
 }
@@ -834,9 +1094,8 @@ function saveModelConfig() {
   activeModelId.value = normalized.id
   persistActiveModelId()
   if (previouslyActiveId !== normalized.id) {
-    applyConversationReset('Model changed. The next prompt will use the selected model.', {
-      resetWorkspace: false,
-      resetSync: false
+    applyConversationResetToAll('Model changed. The next prompt will use the selected model.', {
+      resetWorkspace: false
     })
   }
 
@@ -1555,8 +1814,10 @@ function renderMarkdown(raw, workspace = '') {
   return html
 }
 
-function appendAssistantNote(text) {
-  messages.value.push({
+function appendAssistantNote(text, conversationId = activeConversationId.value) {
+  const conversation = getConversationById(conversationId)
+  if (!conversation) return
+  conversation.messages.push({
     id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     role: 'assistant',
     text: String(text || ''),
@@ -1565,8 +1826,10 @@ function appendAssistantNote(text) {
   })
 }
 
-function appendUserMessage(text) {
-  messages.value.push({
+function appendUserMessage(text, conversationId = activeConversationId.value) {
+  const conversation = getConversationById(conversationId)
+  if (!conversation) return
+  conversation.messages.push({
     id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     role: 'user',
     text: String(text || ''),
@@ -1574,16 +1837,18 @@ function appendUserMessage(text) {
   })
 }
 
-function appendAssistantPlaceholder(workspace = '') {
+function appendAssistantPlaceholder(workspace = '', conversationId = activeConversationId.value) {
+  const conversation = getConversationById(conversationId)
+  if (!conversation) return ''
   const id = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-  messages.value.push({ id, role: 'assistant', text: '', agentSteps: [], workspace: cleanString(workspace) })
+  conversation.messages.push({ id, role: 'assistant', text: '', agentSteps: [], workspace: cleanString(workspace) })
   return id
 }
 
-function setAssistantMessageWorkspace(messageId, workspace) {
+function setAssistantMessageWorkspace(conversationId, messageId, workspace) {
   const normalizedWorkspace = cleanString(workspace)
   if (!normalizedWorkspace) return
-  updateAssistantMessage(messageId, (msg) => ({
+  updateAssistantMessage(conversationId, messageId, (msg) => ({
     ...msg,
     workspace: normalizedWorkspace
   }))
@@ -1609,15 +1874,17 @@ function extractUpdateContent(content, preferredKeys = []) {
   return String(content || '')
 }
 
-function updateAssistantMessage(messageId, updater) {
-  messages.value = messages.value.map((msg) => {
+function updateAssistantMessage(conversationId, messageId, updater) {
+  const conversation = getConversationById(conversationId)
+  if (!conversation) return
+  conversation.messages = conversation.messages.map((msg) => {
     if (msg.id !== messageId) return msg
     return updater({ ...msg, agentSteps: Array.isArray(msg.agentSteps) ? [...msg.agentSteps] : [] })
   })
 }
 
-function applyStreamUpdate(messageId, update) {
-  updateAssistantMessage(messageId, (msg) => {
+function applyStreamUpdate(conversationId, messageId, update) {
+  updateAssistantMessage(conversationId, messageId, (msg) => {
     const steps = [...(msg.agentSteps || [])]
     const agent = String(update?.agent || 'Agent')
     const type = String(update?.type || '')
@@ -1685,17 +1952,17 @@ function applyStreamUpdate(messageId, update) {
   })
 }
 
-function finalizeAssistantMessage(messageId) {
-  updateAssistantMessage(messageId, (msg) => {
+function finalizeAssistantMessage(conversationId, messageId) {
+  updateAssistantMessage(conversationId, messageId, (msg) => {
     const steps = (msg.agentSteps || []).map((step) => step.status === 'running' ? { ...step, status: 'done' } : step)
     const lastStepWithContent = [...steps].reverse().find((step) => step.stepType !== 'agent_start' && String(step?.content || '').trim())
     return { ...msg, text: lastStepWithContent?.content || msg.text, agentSteps: steps }
   })
 }
 
-function markAssistantError(messageId, error) {
+function markAssistantError(conversationId, messageId, error) {
   const message = `Error: ${error?.message || 'unknown error'}`
-  updateAssistantMessage(messageId, (msg) => {
+  updateAssistantMessage(conversationId, messageId, (msg) => {
     const steps = [...(msg.agentSteps || [])]
     if (!steps.length) {
       steps.push({ agent: 'System', content: message, status: 'error', stepType: 'agent_error', isFinal: true })
@@ -1716,8 +1983,8 @@ function isAbortError(error) {
   return error?.name === 'AbortError'
 }
 
-function markAssistantStopped(messageId) {
-  updateAssistantMessage(messageId, (msg) => {
+function markAssistantStopped(conversationId, messageId) {
+  updateAssistantMessage(conversationId, messageId, (msg) => {
     const steps = [...(msg.agentSteps || [])]
     if (!steps.length) {
       steps.push({
@@ -1742,22 +2009,23 @@ function markAssistantStopped(messageId) {
 }
 
 function stopStreaming() {
-  if (!isStreaming.value || !currentStreamController.value) return
+  const conversation = getConversationById()
+  if (!conversation || !conversation.isStreaming || !conversation.currentStreamController) return
   notice.value = 'Stopping response...'
-  currentStreamController.value.abort()
+  conversation.currentStreamController.abort()
 }
 function adjustComposerHeight() {
   const el = composerRef.value
   if (!el) return
   el.style.height = 'auto'
-  const maxHeight = 120
+  const maxHeight = 92
   const nextHeight = Math.min(el.scrollHeight, maxHeight)
   el.style.height = `${nextHeight}px`
   el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
 }
 
 function syncReset(reason) {
-  applyConversationReset(reason, {
+  applyConversationResetToAll(reason, {
     resetWorkspace: true
   })
 }
@@ -1790,7 +2058,11 @@ async function onFilesChange(event) {
 }
 
 async function submitPrompt() {
-  const prompt = chatPrompt.value.trim()
+  const conversationId = activeConversationId.value
+  const conversation = getConversationById(conversationId)
+  if (!conversation) return
+
+  const prompt = cleanString(conversation.chatPrompt)
   const queuedFiles = queuedFileAssets.value
   if (!prompt || isBusy.value) return
   if (!Number(assetSummary.value.file_count || 0)) {
@@ -1798,23 +2070,24 @@ async function submitPrompt() {
     return
   }
 
-  chatPrompt.value = ''
+  conversation.chatPrompt = ''
   adjustComposerHeight()
   notice.value = ''
 
-  appendUserMessage(prompt)
-  const assistantMessageId = appendAssistantPlaceholder(workspaceId.value)
+  updateConversationTitleFromPrompt(conversationId, prompt, queuedFiles)
+  appendUserMessage(prompt, conversationId)
+  const assistantMessageId = appendAssistantPlaceholder(conversation.workspaceId, conversationId)
   const streamController = new AbortController()
-  currentStreamController.value = streamController
+  conversation.currentStreamController = streamController
 
   try {
-    isStreaming.value = true
+    conversation.isStreaming = true
 
     await streamAgentInteractionChat(
       {
         query: prompt,
-        workspace: workspaceId.value,
-        request_id: sessionId.value || undefined,
+        workspace: conversation.workspaceId,
+        request_id: conversation.sessionId || undefined,
         selected_file_path: queuedFiles.length === 1 ? queuedFiles[0].path : undefined,
         selected_file_paths: queuedFiles.length ? queuedFiles.map((file) => file.path) : undefined,
         model_config: buildSelectedModelPayload()
@@ -1822,41 +2095,55 @@ async function submitPrompt() {
       {
         signal: streamController.signal,
         onOpened: (data) => {
+          const targetConversation = getConversationById(conversationId)
+          if (!targetConversation) return
           const openedSessionId = String(data?.session_id || '').trim()
           if (openedSessionId) {
-            sessionId.value = openedSessionId
+            targetConversation.sessionId = openedSessionId
           }
           const openedWorkspace = cleanString(data?.workspace)
           if (openedWorkspace) {
-            workspaceId.value = openedWorkspace
-            setAssistantMessageWorkspace(assistantMessageId, openedWorkspace)
+            targetConversation.workspaceId = openedWorkspace
+            setAssistantMessageWorkspace(conversationId, assistantMessageId, openedWorkspace)
           }
         },
         onDelta: (update) => {
-          applyStreamUpdate(assistantMessageId, update)
+          applyStreamUpdate(conversationId, assistantMessageId, update)
         },
         onDone: () => {
-          finalizeAssistantMessage(assistantMessageId)
+          finalizeAssistantMessage(conversationId, assistantMessageId)
         },
         onError: (error) => {
-          notice.value = error?.message || 'Stream failed.'
-          markAssistantError(assistantMessageId, error)
+          const targetConversation = getConversationById(conversationId)
+          if (targetConversation) {
+            targetConversation.notice = error?.message || 'Stream failed.'
+          }
+          markAssistantError(conversationId, assistantMessageId, error)
         }
       }
     )
   } catch (error) {
     if (isAbortError(error)) {
-      notice.value = 'Response stopped.'
-      sessionId.value = ''
-      markAssistantStopped(assistantMessageId)
+      const targetConversation = getConversationById(conversationId)
+      if (targetConversation) {
+        targetConversation.notice = 'Response stopped.'
+        targetConversation.sessionId = ''
+      }
+      markAssistantStopped(conversationId, assistantMessageId)
     } else {
       const msg = error?.message || 'unknown error'
-      notice.value = msg
-      markAssistantError(assistantMessageId, error)
+      const targetConversation = getConversationById(conversationId)
+      if (targetConversation) {
+        targetConversation.notice = msg
+      }
+      markAssistantError(conversationId, assistantMessageId, error)
     }
   } finally {
-    currentStreamController.value = null
-    isStreaming.value = false
+    const targetConversation = getConversationById(conversationId)
+    if (targetConversation) {
+      targetConversation.currentStreamController = null
+      targetConversation.isStreaming = false
+    }
   }
 }
 
@@ -1868,7 +2155,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
-  currentStreamController.value?.abort()
+  conversationPages.value.forEach((conversation) => conversation.currentStreamController?.abort())
   modelConfigModalInstance?.dispose()
 })
 
@@ -1881,6 +2168,17 @@ watch(
     }
   },
   { deep: true }
+)
+
+watch(
+  activeConversationId,
+  async () => {
+    await nextTick()
+    adjustComposerHeight()
+    if (chatBodyRef.value) {
+      chatBodyRef.value.scrollTop = chatBodyRef.value.scrollHeight
+    }
+  }
 )
 </script>
 
@@ -2164,25 +2462,335 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1.1rem 0.95rem;
+  gap: 0.65rem;
+  padding: 0.72rem 0.88rem 0.68rem;
   border-bottom: 1px solid #e5e7eb;
   background: #ffffff;
+}
+
+.chat-header-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.chat-header-eyebrow {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #2563eb;
+  white-space: nowrap;
+}
+
+.chat-header-controls {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.48rem;
+}
+
+.conversation-picker {
+  position: relative;
+  min-width: 0;
+  width: min(100%, 360px);
+}
+
+.conversation-picker-btn {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 0.18rem 0.28rem 0.18rem 0.24rem;
+  display: flex;
+  align-items: center;
+  gap: 0.44rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition: all 0.18s ease;
+}
+
+.conversation-picker-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #9ca3af;
+}
+
+.conversation-picker-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.conversation-picker-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+}
+
+.conversation-picker-icon.live {
+  background: linear-gradient(135deg, #0f766e, #22c55e);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+}
+
+.conversation-picker-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.02rem;
+}
+
+.conversation-picker-label {
+  font-size: 0.58rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.conversation-picker-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.conversation-picker-count {
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 0.12rem 0.42rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.conversation-picker-caret {
+  color: #64748b;
+  transition: transform 0.18s ease;
+}
+
+.conversation-picker-caret.open {
+  transform: rotate(180deg);
+}
+
+.conversation-picker-menu {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  width: min(360px, calc(100vw - 3rem));
+  padding: 0.34rem;
+  border-radius: 16px;
+  border: 1px solid #dbe4f0;
+  background: #ffffff;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.16);
+  z-index: 35;
+}
+
+.conversation-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  border-radius: 12px;
+  padding: 0.1rem;
+}
+
+.conversation-menu-row.active {
+  background: #f8fbff;
+}
+
+.conversation-menu-item {
+  min-width: 0;
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  padding: 0.42rem 0.48rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-align: left;
+  transition: background-color 0.18s ease;
+}
+
+.conversation-menu-item:hover {
+  background: #f8fafc;
+}
+
+.conversation-menu-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+
+.conversation-menu-indicator.live {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
+
+.conversation-menu-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.04rem;
+}
+
+.conversation-menu-title {
+  font-size: 0.79rem;
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-menu-meta {
+  font-size: 0.7rem;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-menu-check {
+  color: #2563eb;
+  font-size: 0.92rem;
+}
+
+.conversation-menu-close {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+
+.conversation-menu-close:hover:not(:disabled) {
+  background: #e5e7eb;
+  color: #0f172a;
+}
+
+.conversation-menu-close:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
+.chat-tabs-count {
+  font-size: 0.7rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.chat-add-btn {
+  min-height: 34px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 0.18rem 0.62rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition: all 0.18s ease;
+}
+
+.chat-add-btn:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.chat-add-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .chat-body {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.7rem;
   overflow: auto;
   flex: 1;
   min-height: 0;
   background: #f7faff;
-  padding: 1rem 1.1rem;
+  padding: 0.82rem 0.92rem;
+}
+
+.chat-empty-state {
+  flex: 1;
+  display: grid;
+  place-items: center;
+}
+
+.chat-empty-card {
+  max-width: 400px;
+  border: 1px solid #dbeafe;
+  background: linear-gradient(160deg, #ffffff 0%, #f3f8ff 100%);
+  border-radius: 20px;
+  padding: 1.08rem 1.12rem;
+  box-shadow: 0 18px 30px rgba(15, 23, 42, 0.07);
+  text-align: left;
+}
+
+.chat-empty-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 0.22rem 0.52rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  margin-bottom: 0.7rem;
+}
+
+.chat-empty-card h6 {
+  font-size: 0.94rem;
+  color: #0f172a;
+}
+
+.chat-empty-card p {
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: #475569;
 }
 
 .chat-footer {
-  padding: 0.8rem 0.9rem 0.9rem;
+  padding: 0.6rem 0.72rem 0.72rem;
   border-top: 1px solid #e5e7eb;
   background: #ffffff;
 }
@@ -2190,8 +2798,8 @@ watch(
 .composer-shell {
   border: 1px solid #dbe4f0;
   background: #ffffff;
-  border-radius: 18px;
-  padding: 0.62rem 0.68rem;
+  border-radius: 16px;
+  padding: 0.46rem 0.52rem;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
 }
 
@@ -2199,21 +2807,21 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
-  margin-top: 0.45rem;
+  gap: 0.45rem;
+  margin-top: 0.32rem;
 }
 
 .composer-left-actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   min-width: 0;
   flex: 1;
 }
 
 .composer-plus-btn {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   border: 1px solid #d1d5db;
   background: #ffffff;
@@ -2238,21 +2846,21 @@ watch(
 .model-picker {
   position: relative;
   min-width: 0;
-  max-width: 280px;
+  max-width: 236px;
   flex: 1;
 }
 
 .model-picker-btn {
   width: 100%;
-  min-height: 34px;
+  min-height: 32px;
   border: 1px solid #d1d5db;
   background: #ffffff;
   color: #111827;
   border-radius: 999px;
-  padding: 0.2rem 0.48rem 0.2rem 0.28rem;
+  padding: 0.18rem 0.42rem 0.18rem 0.24rem;
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.38rem;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   transition: all 0.18s ease;
 }
@@ -2268,15 +2876,15 @@ watch(
 }
 
 .model-picker-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   color: #ffffff;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
 }
 
 .model-tone-default {
@@ -2296,7 +2904,7 @@ watch(
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
 }
 
@@ -2313,10 +2921,10 @@ watch(
 .model-picker-menu {
   position: absolute;
   left: 0;
-  bottom: calc(100% + 0.55rem);
-  width: min(320px, calc(100vw - 3rem));
-  padding: 0.38rem;
-  border-radius: 16px;
+  bottom: calc(100% + 0.45rem);
+  width: min(300px, calc(100vw - 3rem));
+  padding: 0.32rem;
+  border-radius: 14px;
   border: 1px solid #dbe4f0;
   background: #ffffff;
   box-shadow: 0 20px 45px rgba(15, 23, 42, 0.16);
@@ -2328,10 +2936,10 @@ watch(
   border: none;
   background: transparent;
   border-radius: 12px;
-  padding: 0.48rem;
+  padding: 0.42rem;
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.58rem;
   text-align: left;
   transition: background-color 0.18s ease;
 }
@@ -2345,8 +2953,8 @@ watch(
 }
 
 .model-menu-icon {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
 }
 
 .model-menu-copy {
@@ -2396,9 +3004,9 @@ watch(
 }
 
 .message-bubble {
-  max-width: 88%;
-  border-radius: 14px;
-  padding: 0.7rem 0.8rem;
+  max-width: 82%;
+  border-radius: 12px;
+  padding: 0.56rem 0.68rem;
   border: 1px solid #dbe4f0;
 }
 
@@ -2412,29 +3020,31 @@ watch(
 }
 
 .assistant-message-shell {
-  width: min(100%, 920px);
+  width: min(100%, 860px);
 }
 
 .message-text,
 .message-text-plain {
   margin: 0;
   word-break: break-word;
+  font-size: 0.88rem;
+  line-height: 1.5;
 }
 
 .composer-selection-row {
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.28rem;
 }
 
 .composer-selection-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.65rem;
-  margin-bottom: 0.45rem;
+  gap: 0.42rem;
+  margin-bottom: 0.28rem;
 }
 
 .composer-selection-summary {
-  font-size: 0.68rem;
+  font-size: 0.58rem;
   line-height: 1.1;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -2444,20 +3054,20 @@ watch(
 
 .composer-selection-mode {
   flex-shrink: 0;
-  padding: 0.16rem 0.5rem;
+  padding: 0.12rem 0.36rem;
   border-radius: 999px;
   border: 1px solid #bfdbfe;
   background: #eff6ff;
   color: #1d4ed8;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 600;
 }
 
 .composer-selection-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
-  max-height: 112px;
+  gap: 0.28rem;
+  max-height: 68px;
   overflow: auto;
   padding-right: 0.15rem;
 }
@@ -2465,20 +3075,20 @@ watch(
 .composer-selection-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.48rem;
-  min-height: 34px;
-  max-width: min(100%, 320px);
-  flex: 0 1 320px;
-  padding: 0.34rem 0.55rem;
-  border-radius: 12px;
+  gap: 0.32rem;
+  min-height: 26px;
+  max-width: min(100%, 240px);
+  flex: 0 1 240px;
+  padding: 0.22rem 0.36rem;
+  border-radius: 10px;
   background: #f8fafc;
   border: 1px solid #dbe4f0;
 }
 
 .composer-selection-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
   background: #eff6ff;
   color: #1d4ed8;
   display: inline-flex;
@@ -2495,7 +3105,7 @@ watch(
 }
 
 .composer-selection-label {
-  font-size: 0.62rem;
+  font-size: 0.52rem;
   line-height: 1.05;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -2504,7 +3114,7 @@ watch(
 }
 
 .composer-selection-name {
-  font-size: 0.84rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: #0f172a;
   white-space: nowrap;
@@ -2513,7 +3123,7 @@ watch(
 }
 
 .composer-selection-path {
-  font-size: 0.72rem;
+  font-size: 0.62rem;
   color: #64748b;
   white-space: nowrap;
   overflow: hidden;
@@ -2522,13 +3132,13 @@ watch(
 
 .composer {
   resize: none;
-  min-height: 58px;
-  max-height: 120px;
+  min-height: 42px;
+  max-height: 92px;
   border: none;
   box-shadow: none;
-  padding: 0.05rem 0.1rem 0;
-  line-height: 1.42;
-  font-size: 0.92rem;
+  padding: 0.02rem 0.08rem 0;
+  line-height: 1.38;
+  font-size: 0.88rem;
 }
 
 .composer:focus {
@@ -2536,7 +3146,7 @@ watch(
 }
 
 .composer-action-btn {
-  font-size: 1rem;
+  font-size: 0.92rem;
 }
 
 .upload-action-btn {
@@ -2632,14 +3242,14 @@ watch(
 }
 
 .stream-control-inline {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   padding: 0;
 }
 
 .stream-control-composer {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   border-color: #111827;
   background: #111827;
@@ -2653,7 +3263,7 @@ watch(
 }
 
 .step-running-label {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: #6b7280;
 }
@@ -2792,6 +3402,20 @@ watch(
 .agent-block {
   position: relative;
   z-index: 1;
+  border-radius: 14px !important;
+}
+
+.agent-block-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.52rem 0.68rem;
+  background: #f8fafc;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.agent-block-content {
+  padding: 0.72rem 0.8rem;
 }
 
 .step-connector {
@@ -2828,8 +3452,8 @@ watch(
 }
 
 .agent-icon-wrap {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
 }
 
 
@@ -2856,6 +3480,30 @@ watch(
   .saved-model-card-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .chat-header-copy,
+  .chat-header-controls,
+  .chat-header-actions {
+    width: 100%;
+  }
+
+  .chat-header-copy {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .chat-header-controls {
+    justify-content: space-between;
+  }
+
+  .conversation-picker {
+    width: 100%;
+  }
+
+  .conversation-picker-menu {
+    width: 100%;
   }
 
   .composer-bottom-row {
