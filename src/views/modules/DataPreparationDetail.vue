@@ -100,6 +100,39 @@
                     </tbody>
                   </table>
                 </div>
+                <div v-if="samplePageCount > 1" class="sample-pagination-bar">
+                  <div class="sample-pagination-status">{{ samplePageSummary }}</div>
+                  <div class="sample-pagination-controls">
+                    <button
+                      class="page-pill page-pill-nav"
+                      type="button"
+                      :disabled="currentSamplePage === 1"
+                      @click="goToSamplePage(currentSamplePage - 1)"
+                    >
+                      Prev
+                    </button>
+                    <template v-for="item in samplePaginationItems" :key="item.key">
+                      <span v-if="item.type === 'ellipsis'" class="page-ellipsis">...</span>
+                      <button
+                        v-else
+                        class="page-pill"
+                        :class="{ 'is-active': item.page === currentSamplePage }"
+                        type="button"
+                        @click="goToSamplePage(item.page)"
+                      >
+                        {{ item.page }}
+                      </button>
+                    </template>
+                    <button
+                      class="page-pill page-pill-nav"
+                      type="button"
+                      :disabled="currentSamplePage === samplePageCount"
+                      @click="goToSamplePage(currentSamplePage + 1)"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </article>
@@ -169,33 +202,68 @@
           </div>
           <div class="modal-body">
             <div v-if="sampleRows.length === 0" class="text-muted small">No sample data.</div>
-            <div v-else class="table-responsive">
-              <table class="table dataset-viewer-table align-middle mb-0">
-                <thead>
-                <tr>
-                  <th style="width: 90px;">id</th>
-                  <th>messages</th>
-                  <th style="width: 140px;">input_tokens</th>
-                  <th style="width: 150px;">output_tokens</th>
-                  <th style="width: 140px;">total_tokens</th>
-                  <th style="width: 140px;">evaluation</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr v-for="row in sampleTableRows" :key="`modal-${row.rowKey}`">
-                  <td class="mono-cell">{{ row.id }}</td>
-                  <td>
-                    <div class="messages-cell" :title="row.messagesFull">{{ row.messagesPreview }}</div>
-                  </td>
-                  <td class="mono-cell">{{ row.inputTokens }}</td>
-                  <td class="mono-cell">{{ row.outputTokens }}</td>
-                  <td class="mono-cell">{{ row.totalTokens }}</td>
-                  <td>
-                    <div class="evaluation-cell" :title="row.evaluationFull">{{ row.evaluationPreview }}</div>
-                  </td>
-                </tr>
-                </tbody>
-              </table>
+            <div v-else class="dataset-table-wrap">
+              <div class="table-responsive">
+                <table class="table dataset-viewer-table align-middle mb-0">
+                  <thead>
+                  <tr>
+                    <th style="width: 90px;">id</th>
+                    <th>messages</th>
+                    <th style="width: 140px;">input_tokens</th>
+                    <th style="width: 150px;">output_tokens</th>
+                    <th style="width: 140px;">total_tokens</th>
+                    <th style="width: 140px;">evaluation</th>
+                  </tr>
+                  </thead>
+                  <tbody>
+                  <tr v-for="row in sampleTableRows" :key="`modal-${row.rowKey}`">
+                    <td class="mono-cell">{{ row.id }}</td>
+                    <td>
+                      <div class="messages-cell" :title="row.messagesFull">{{ row.messagesPreview }}</div>
+                    </td>
+                    <td class="mono-cell">{{ row.inputTokens }}</td>
+                    <td class="mono-cell">{{ row.outputTokens }}</td>
+                    <td class="mono-cell">{{ row.totalTokens }}</td>
+                    <td>
+                      <div class="evaluation-cell" :title="row.evaluationFull">{{ row.evaluationPreview }}</div>
+                    </td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-if="samplePageCount > 1" class="sample-pagination-bar sample-pagination-bar-modal">
+                <div class="sample-pagination-status">{{ samplePageSummary }}</div>
+                <div class="sample-pagination-controls">
+                  <button
+                    class="page-pill page-pill-nav"
+                    type="button"
+                    :disabled="currentSamplePage === 1"
+                    @click="goToSamplePage(currentSamplePage - 1)"
+                  >
+                    Prev
+                  </button>
+                  <template v-for="item in samplePaginationItems" :key="`modal-${item.key}`">
+                    <span v-if="item.type === 'ellipsis'" class="page-ellipsis">...</span>
+                    <button
+                      v-else
+                      class="page-pill"
+                      :class="{ 'is-active': item.page === currentSamplePage }"
+                      type="button"
+                      @click="goToSamplePage(item.page)"
+                    >
+                      {{ item.page }}
+                    </button>
+                  </template>
+                  <button
+                    class="page-pill page-pill-nav"
+                    type="button"
+                    :disabled="currentSamplePage === samplePageCount"
+                    @click="goToSamplePage(currentSamplePage + 1)"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
           <div class="modal-footer">
@@ -208,7 +276,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
 import { fetchDatasetDetail } from '../../api/dataAgent'
@@ -220,9 +288,10 @@ const isLoading = ref(false)
 const notice = ref('')
 const dataset = ref(null)
 const sampleRows = ref([])
+const currentSamplePage = ref(1)
 const sampleModalRef = ref(null)
 let sampleModalInstance = null
-const SAMPLE_RECORDS_LIMIT = 20
+const SAMPLE_RECORDS_PAGE_SIZE = 5
 
 const typeLabels = {
   instruction: 'Instruction',
@@ -236,19 +305,6 @@ const languageLabels = {
   en: 'English',
   multi: 'Multilingual'
 }
-
-const sampleCountLabel = computed(() => {
-  const total = sampleRows.value.length
-  if (total > SAMPLE_RECORDS_LIMIT) {
-    return `Showing ${SAMPLE_RECORDS_LIMIT} of ${total} samples`
-  }
-  return `${total} samples`
-})
-const sampleTableRows = computed(() =>
-  sampleRows.value
-    .slice(0, SAMPLE_RECORDS_LIMIT)
-    .map((sample, index) => normalizeSampleRow(sample, index))
-)
 
 const statusClass = (status) => {
   if (status === 'ready') return 'bg-success-subtle text-success-emphasis'
@@ -334,6 +390,75 @@ const normalizeDatasetDetail = (detail) => ({
   updatedAt: String(detail?.update_time || detail?.updated_at || '-'),
 })
 
+const normalizedSampleRows = computed(() =>
+  sampleRows.value.map((sample, index) => normalizeSampleRow(sample, index))
+)
+
+const samplePageCount = computed(() => Math.max(1, Math.ceil(normalizedSampleRows.value.length / SAMPLE_RECORDS_PAGE_SIZE)))
+
+const sampleCountLabel = computed(() => {
+  const total = normalizedSampleRows.value.length
+  if (total === 0) return '0 samples'
+  return `${total} samples`
+})
+
+const samplePageSummary = computed(() => {
+  const total = normalizedSampleRows.value.length
+  if (total === 0) return 'No samples'
+  const start = (currentSamplePage.value - 1) * SAMPLE_RECORDS_PAGE_SIZE + 1
+  const end = Math.min(currentSamplePage.value * SAMPLE_RECORDS_PAGE_SIZE, total)
+  return `Showing ${start}-${end} of ${total} samples`
+})
+
+const sampleTableRows = computed(() => {
+  const start = (currentSamplePage.value - 1) * SAMPLE_RECORDS_PAGE_SIZE
+  const end = start + SAMPLE_RECORDS_PAGE_SIZE
+  return normalizedSampleRows.value.slice(start, end)
+})
+
+const buildSamplePaginationItems = (currentPage, totalPages) => {
+  const items = []
+  if (totalPages <= 7) {
+    for (let page = 1; page <= totalPages; page += 1) {
+      items.push({ type: 'page', page, key: `page-${page}` })
+    }
+    return items
+  }
+
+  const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1])
+  if (currentPage <= 3) {
+    pages.add(2)
+    pages.add(3)
+  }
+  if (currentPage >= totalPages - 2) {
+    pages.add(totalPages - 1)
+    pages.add(totalPages - 2)
+  }
+
+  const orderedPages = [...pages]
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((a, b) => a - b)
+
+  orderedPages.forEach((page, index) => {
+    const previous = orderedPages[index - 1]
+    if (previous && page - previous > 1) {
+      items.push({ type: 'ellipsis', key: `ellipsis-${previous}-${page}` })
+    }
+    items.push({ type: 'page', page, key: `page-${page}` })
+  })
+
+  return items
+}
+
+const samplePaginationItems = computed(() =>
+  buildSamplePaginationItems(currentSamplePage.value, samplePageCount.value)
+)
+
+const goToSamplePage = (page) => {
+  const nextPage = Math.min(Math.max(page, 1), samplePageCount.value)
+  currentSamplePage.value = nextPage
+}
+
 const getSampleModal = () => {
   if (!sampleModalRef.value) return null
   sampleModalInstance = Modal.getOrCreateInstance(sampleModalRef.value)
@@ -368,14 +493,22 @@ const loadDatasetDetail = async () => {
     const detail = response?.data || response || {}
     dataset.value = normalizeDatasetDetail(detail)
     sampleRows.value = Array.isArray(detail?.sample_data) ? detail.sample_data : []
+    currentSamplePage.value = 1
   } catch (error) {
     dataset.value = null
     sampleRows.value = []
+    currentSamplePage.value = 1
     notice.value = `Failed to load dataset detail. (${error?.message || 'unknown error'})`
   } finally {
     isLoading.value = false
   }
 }
+
+watch(samplePageCount, (pageCount) => {
+  if (currentSamplePage.value > pageCount) {
+    currentSamplePage.value = pageCount
+  }
+})
 
 onMounted(() => {
   loadDatasetDetail()
@@ -604,6 +737,80 @@ onBeforeUnmount(() => {
   background: #f8fbff;
 }
 
+.sample-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem 1rem;
+  border-top: 1px solid #e8eef6;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.95) 0%, rgba(255, 255, 255, 0.98) 100%);
+}
+
+.sample-pagination-bar-modal {
+  position: sticky;
+  bottom: 0;
+}
+
+.sample-pagination-status {
+  color: #526071;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.sample-pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.page-pill {
+  min-width: 2.35rem;
+  height: 2.35rem;
+  padding: 0 0.8rem;
+  border: 1px solid #d7e1ee;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.page-pill:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.3);
+  color: #1d4ed8;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.12);
+}
+
+.page-pill.is-active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
+}
+
+.page-pill:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.page-pill-nav {
+  min-width: 4.3rem;
+}
+
+.page-ellipsis {
+  color: #94a3b8;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0 0.15rem;
+}
+
 .col-id {
   width: 72px;
 }
@@ -653,6 +860,15 @@ onBeforeUnmount(() => {
 @media (max-width: 991px) {
   .detail-hero-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sample-pagination-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sample-pagination-controls {
+    justify-content: flex-start;
   }
 }
 </style>
