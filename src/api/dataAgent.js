@@ -39,6 +39,8 @@ const request = async (path, options = {}) => {
 
 export const fetchDatasets = () => request('/datasets')
 
+export const fetchCurrentSession = () => request('/auth/session')
+
 export const createDataset = (payload) =>
   request('/datasets', {
     method: 'POST',
@@ -199,6 +201,12 @@ export const fetchAgenticSynthesisTasks = (limit = 20) =>
 
 export const fetchAgenticSynthesisTask = (taskId) =>
   request(`/agentic-synthesis/tasks/${encodeURIComponent(taskId)}`)
+
+export const fetchAgenticSynthesisTaskResults = (taskId, limit = 200) =>
+  request(`/agentic-synthesis/tasks/${encodeURIComponent(taskId)}/results?limit=${encodeURIComponent(limit)}`)
+
+export const fetchAgenticSynthesisResult = (resultId) =>
+  request(`/agentic-synthesis/results/${encodeURIComponent(resultId)}`)
 
 export const createAgenticSynthesisTask = (payload) =>
   request('/agentic-synthesis/tasks', {

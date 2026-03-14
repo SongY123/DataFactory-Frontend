@@ -15,7 +15,7 @@
       <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
         <div>
           <h6 class="card-title mb-1">Dataset Upload</h6>
-          <p class="text-muted small mb-0">Click to open upload form in a modal.</p>
+          <p class="text-muted small mb-0">Click to open upload form in a modal. Current user: {{ currentUsername || 'unknown' }}</p>
         </div>
         <button class="btn btn-primary" type="button" @click="openUploadModal">
           Upload
@@ -319,14 +319,15 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
 import {
-  createDataset,
   deleteDataset,
   fetchDatasetDetail,
   fetchDatasets,
+  fetchCurrentSession,
   updateDataset,
   updateDatasetCover,
   uploadDataset
 } from '../../api/dataAgent'
+import { getStoredUsername, isLoggedIn } from '../../api/auth'
 
 const isLoading = ref(false)
 const isSubmitting = ref(false)
@@ -409,9 +410,24 @@ const mapDatasets = (raw) => {
     }))
 }
 
+const extractFolderNameFromFiles = (fileList = []) => {
+  if (!Array.isArray(fileList) || fileList.length === 0) return ''
+  const firstPath = String(fileList[0]?.webkitRelativePath || fileList[0]?.name || '')
+  if (!firstPath) return ''
+  const normalized = firstPath.replaceAll('\\', '/')
+  const firstSegment = normalized.split('/')[0] || ''
+  if (!firstSegment || firstSegment === normalized) return ''
+  return firstSegment.trim()
+}
+
 const onDatasetFilesChange = (event) => {
   const files = event?.target?.files
   selectedDatasetFiles.value = files ? Array.from(files) : []
+
+  const folderName = extractFolderNameFromFiles(selectedDatasetFiles.value)
+  if (folderName) {
+    datasetForm.value.name = folderName
+  }
 }
 
 const onCoverFileChange = (event) => {
@@ -536,6 +552,10 @@ const resetDatasetForm = () => {
 }
 
 const submitDataset = async () => {
+  if (!isLoggedIn()) {
+    notice.value = 'Please login first before uploading datasets.'
+    return
+  }
   if (!datasetForm.value.name) return
   if (selectedDatasetFiles.value.length === 0) {
     notice.value = 'Please select a dataset folder.'
@@ -544,8 +564,6 @@ const submitDataset = async () => {
 
   isSubmitting.value = true
   notice.value = ''
-  let uploadSucceeded = false
-
   try {
     const formData = new FormData()
     selectedDatasetFiles.value.forEach((file, index) => {
@@ -561,28 +579,21 @@ const submitDataset = async () => {
     formData.append('language', datasetForm.value.language)
     formData.append('source', datasetForm.value.source || '')
     formData.append('note', datasetForm.value.note || '')
+    if (currentUserId.value) {
+      formData.append('user_id', String(currentUserId.value))
+    }
+    if (currentUsername.value) {
+      formData.append('username', currentUsername.value)
+    }
 
     await uploadDataset(formData)
-    uploadSucceeded = true
-  } catch (uploadError) {
-    try {
-      await createDataset({
-        ...datasetForm.value,
-        size: 0,
-        sample_data: []
-      })
-      uploadSucceeded = true
-    } catch (createError) {
-      notice.value = `Upload failed. (${createError?.message || uploadError?.message || 'unknown error'})`
-    }
-  } finally {
-    isSubmitting.value = false
-  }
-
-  if (uploadSucceeded) {
     closeUploadModal()
     resetDatasetForm()
     await refreshDatasets()
+  } catch (uploadError) {
+    notice.value = `Upload failed. (${uploadError?.message || 'unknown error'})`
+  } finally {
+    isSubmitting.value = false
   }
 }
 
@@ -649,8 +660,9 @@ const removeDataset = async (row) => {
   }
 }
 
-onMounted(() => {
-  refreshDatasets()
+onMounted(async () => {
+  await refreshCurrentSession()
+  await refreshDatasets()
 })
 
 onBeforeUnmount(() => {
