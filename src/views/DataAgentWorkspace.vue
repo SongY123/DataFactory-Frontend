@@ -47,7 +47,20 @@
     </aside>
 
     <section class="workspace-main">
-      <router-view />
+      <router-view v-slot="{ Component, route: currentRoute }">
+        <keep-alive>
+          <component
+              :is="Component"
+              v-if="currentRoute.name === 'AgentInteraction'"
+              :key="String(currentRoute.name || 'AgentInteraction')"
+          />
+        </keep-alive>
+        <component
+            :is="Component"
+            v-if="currentRoute.name !== 'AgentInteraction'"
+            :key="currentRoute.fullPath"
+        />
+      </router-view >
     </section>
   </div>
 </template>
