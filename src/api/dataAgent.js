@@ -1,13 +1,19 @@
-﻿import { config } from '../config/global.js'
+import { config } from '../config/global.js'
+
+const sanitizeErrorMessage = (message, fallback = 'Request failed') => {
+  const text = String(message || '').trim()
+  return text || fallback
+}
 
 const parseError = async (res) => {
+  const fallback = `Request failed (${res.status})`
   const text = await res.text()
-  if (!text) return `Request failed (${res.status})`
+  if (!text) return fallback
   try {
     const body = JSON.parse(text)
-    return body?.detail || body?.message || text
+    return sanitizeErrorMessage(body?.detail || body?.message || text, fallback)
   } catch {
-    return text
+    return sanitizeErrorMessage(text, fallback)
   }
 }
 
@@ -92,6 +98,103 @@ export const postAgentMessage = (payload) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
+
+export const fetchAgentAssetTree = () => request('/assets/tree')
+
+export const createAgentAssetFolder = (payload) =>
+  request('/folders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+export const deleteAgentAssetFolder = (path, force = true) =>
+  request(`/folders?path=${encodeURIComponent(path)}&force=${force ? 'true' : 'false'}`, {
+    method: 'DELETE'
+  })
+
+export const deleteAgentAssetFile = (path) =>
+  request(`/files?path=${encodeURIComponent(path)}`, {
+    method: 'DELETE'
+  })
+
+export const uploadAgentInteractionFile = (file, folderPath = '') => {
+  const formData = new FormData()
+  formData.append('file', file, file.name)
+  formData.append('folder_path', folderPath)
+  return request('/upload', {
+    method: 'POST',
+    body: formData
+  })
+}
+
+export const streamAgentInteractionChat = async (
+  payload,
+  { onOpened, onDelta, onDone, onError, signal } = {}
+) => {
+  const res = await fetch(`${config.apiBase}/chat`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+    signal
+  })
+
+  if (!res.ok) {
+    throw new Error(await parseError(res))
+  }
+
+  const reader = res.body?.getReader()
+  if (!reader) {
+    throw new Error('Unable to read SSE response stream')
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    let blockEnd = buffer.indexOf('\n\n')
+    while (blockEnd >= 0) {
+      const block = buffer.slice(0, blockEnd)
+      buffer = buffer.slice(blockEnd + 2)
+
+      const lines = block.split('\n')
+      let eventName = 'message'
+      let dataText = ''
+
+      lines.forEach((line) => {
+        if (line.startsWith('event: ')) {
+          eventName = line.slice(7).trim()
+        } else if (line.startsWith('data: ')) {
+          dataText += (dataText ? '\n' : '') + line.slice(6)
+        }
+      })
+
+      if (dataText) {
+        try {
+          const data = JSON.parse(dataText)
+          if (eventName === 'opened') {
+            onOpened?.(data)
+          } else if (eventName === 'delta') {
+            onDelta?.(data)
+          } else if (eventName === 'done') {
+            onDone?.(data)
+          } else if (eventName === 'error') {
+            onError?.(new Error(data?.message || 'Chat stream failed'))
+          }
+        } catch {
+          // ignore malformed event payloads
+        }
+      }
+
+      blockEnd = buffer.indexOf('\n\n')
+    }
+  }
+}
 
 export const fetchAgenticSynthesisTasks = (limit = 20) =>
   request(`/agentic-synthesis/tasks?limit=${encodeURIComponent(limit)}`)

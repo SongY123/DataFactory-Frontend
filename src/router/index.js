@@ -1,5 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import { getPostLoginRoute, isLoggedIn } from '../api/auth'
+import { getPostLoginRoute, syncAuthSession } from '../api/auth'
 
 const routes = [
   {
@@ -19,6 +19,11 @@ const routes = [
         path: 'data-preparation',
         name: 'DataPreparation',
         component: () => import('../views/modules/DataPreparation.vue')
+      },
+      {
+        path: 'data-preparation/:datasetId',
+        name: 'DataPreparationDetail',
+        component: () => import('../views/modules/DataPreparationDetail.vue')
       },
       {
         path: 'trajectory-synthesis',
@@ -52,8 +57,8 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to) => {
-  const authed = isLoggedIn()
+router.beforeEach(async (to) => {
+  const authed = await syncAuthSession()
 
   if (to.name === 'Login' && authed) {
     return getPostLoginRoute()
