@@ -335,6 +335,8 @@ const isSavingEdit = ref(false)
 const isLoadingSampleDetail = ref(false)
 const notice = ref('')
 const router = useRouter()
+const currentUsername = ref(getStoredUsername())
+const currentUserId = ref(null)
 
 const sampleDetailRows = ref([])
 const sampleDetailDatasetName = ref('')
@@ -458,6 +460,17 @@ const selectedFolderLabel = computed(() => {
 const selectedCoverLabel = computed(() => selectedCoverFile.value?.name || 'No cover image selected')
 const editCoverLabel = computed(() => editCoverFile.value?.name || 'No new cover selected')
 
+const normalizeSessionUser = (payload) => {
+  const session = payload?.data || payload || {}
+  const user = session?.user && typeof session.user === 'object' ? session.user : {}
+  const rawId = Number(user?.id || session?.user_id || session?.id || 0)
+
+  return {
+    id: Number.isFinite(rawId) && rawId > 0 ? rawId : null,
+    username: String(user?.username || session?.username || '').trim()
+  }
+}
+
 const setViewMode = (mode) => {
   viewMode.value = mode === 'card' ? 'card' : 'list'
 }
@@ -493,6 +506,23 @@ const openSampleModal = () => {
 
 const closeSampleModal = () => {
   getSampleModal()?.hide()
+}
+
+const refreshCurrentSession = async () => {
+  currentUsername.value = getStoredUsername()
+  currentUserId.value = null
+
+  if (!isLoggedIn()) return
+
+  try {
+    const response = await fetchCurrentSession()
+    const sessionUser = normalizeSessionUser(response)
+    currentUserId.value = sessionUser.id
+    currentUsername.value = sessionUser.username || getStoredUsername()
+  } catch {
+    currentUsername.value = getStoredUsername()
+    currentUserId.value = null
+  }
 }
 
 const refreshDatasets = async () => {
