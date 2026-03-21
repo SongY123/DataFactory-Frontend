@@ -24,15 +24,15 @@
 
       <div class="workflow-steps mt-3">
         <button
-          v-for="(item, index) in workflowModules"
+          v-for="item in workflowModules"
           :key="item.name"
           type="button"
           class="workflow-step"
-          :class="{ active: route.name === item.name }"
+          :class="{ active: isWorkflowItemActive(item) }"
           :title="isSidebarCollapsed ? (item.workflowLabel || item.label) : ''"
           @click="router.push(item.to)"
         >
-          <span class="step-index">{{ index + 1 }}</span>
+          <span v-if="isSidebarCollapsed" class="step-index">{{ item.compactLabel || shortWorkflowLabel(item) }}</span>
           <span v-if="!isSidebarCollapsed" class="step-body">
             <span class="step-title">{{ item.workflowLabel || item.label }}</span>
             <span class="step-desc">{{ item.description }}</span>
@@ -80,10 +80,20 @@ const toggleSidebar = () => {
   localStorage.setItem(WORKFLOW_SIDEBAR_COLLAPSE_KEY, String(isSidebarCollapsed.value))
 }
 
+const isWorkflowItemActive = (item) => {
+  if (!item?.to) return false
+  return route.path === item.to || route.path.startsWith(`${item.to}/`)
+}
+
 const currentModuleLabel = computed(() => {
-  const match = workflowModules.find((item) => item.name === route.name)
+  const match = workflowModules.find((item) => isWorkflowItemActive(item) || item.name === route.name)
   return match?.workflowLabel || match?.label || workflowModules[0].workflowLabel || workflowModules[0].label
 })
+
+const shortWorkflowLabel = (item) => {
+  const label = String(item?.workflowLabel || item?.label || '').trim()
+  return label ? label.charAt(0).toUpperCase() : '?'
+}
 </script>
 
 <style scoped>

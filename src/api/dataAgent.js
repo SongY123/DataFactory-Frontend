@@ -50,10 +50,36 @@ export const createDataset = (payload) =>
 
 export const fetchDatasetDetail = (datasetId) => request(`/datasets/${datasetId}`)
 
+export const fetchDatasetReadme = (datasetId) => request(`/datasets/${datasetId}/readme`)
+
+export const fetchDatasetFiles = (datasetId) => request(`/datasets/${datasetId}/files`)
+
+export const fetchDatasetPreview = (datasetId, params = {}) => {
+  const query = new URLSearchParams()
+  if (params.path) query.set('path', params.path)
+  if (params.limit) query.set('limit', String(params.limit))
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/datasets/${datasetId}/preview${suffix}`)
+}
+
+export const queryDatasetSql = (datasetId, payload) =>
+  request(`/datasets/${datasetId}/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
 export const uploadDataset = (formData) =>
   request('/datasets/upload', {
     method: 'POST',
     body: formData
+  })
+
+export const importHuggingFaceDataset = (payload) =>
+  request('/datasets/import/huggingface', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
   })
 
 export const updateDataset = (datasetId, payload) =>
@@ -127,6 +153,13 @@ export const uploadAgentInteractionFile = (file, folderPath = '') => {
     body: formData
   })
 }
+
+export const importPlatformAsset = (payload) =>
+  request('/assets/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
 
 export const streamAgentInteractionChat = async (
   payload,
@@ -210,6 +243,25 @@ export const fetchAgenticSynthesisResult = (resultId) =>
 
 export const createAgenticSynthesisTask = (payload) =>
   request('/agentic-synthesis/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+export const fetchReasoningDistillationTasks = (limit = 20) =>
+  request(`/reasoning-distillation/tasks?limit=${encodeURIComponent(limit)}`)
+
+export const fetchReasoningDistillationTask = (taskId) =>
+  request(`/reasoning-distillation/tasks/${encodeURIComponent(taskId)}`)
+
+export const fetchReasoningDistillationTaskResults = (taskId, limit = 200) =>
+  request(`/reasoning-distillation/tasks/${encodeURIComponent(taskId)}/results?limit=${encodeURIComponent(limit)}`)
+
+export const fetchReasoningDistillationResult = (resultId) =>
+  request(`/reasoning-distillation/results/${encodeURIComponent(resultId)}`)
+
+export const createReasoningDistillationTask = (payload) =>
+  request('/reasoning-distillation/tasks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)

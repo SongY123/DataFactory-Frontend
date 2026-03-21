@@ -147,6 +147,23 @@
           </div>
         </div>
 
+        <article v-if="selectedTask" class="card border-0 shadow-sm mt-3">
+          <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div>
+              <div class="small text-muted">Selected Task</div>
+              <div class="fw-semibold">#{{ selectedTask.id }} · {{ getTaskDatasetName(selectedTask) }}</div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+              <button v-if="selectedTask.generatedDatasetId" class="btn btn-outline-primary btn-sm" type="button" @click="openGeneratedDataset">
+                Open Generated Dataset
+              </button>
+              <button v-if="selectedTask.id" class="btn btn-outline-dark btn-sm" type="button" @click="useTaskInDistillation">
+                Reasoning Data Synthesis
+              </button>
+            </div>
+          </div>
+        </article>
+
         <article class="card border-0 shadow-sm mt-3 task-overview-card">
           <div class="card-body d-flex flex-column gap-2 h-100">
             <div class="d-flex align-items-center justify-content-between">
@@ -273,16 +290,20 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
 import {
   createAgenticSynthesisTask,
   fetchAgenticSynthesisTaskResults,
   fetchAgenticSynthesisTask,
   fetchAgenticSynthesisTasks,
-  fetchDatasets
+  fetchDatasets,
+  importPlatformAsset
 } from '../../api/dataAgent'
 
 const DEFAULT_ACTION_TAGS = ['Analyze', 'Understand', 'Code', 'Execute', 'Answer']
+const route = useRoute()
+const router = useRouter()
 
 const isLoading = ref(false)
 const isSubmitting = ref(false)
@@ -320,7 +341,7 @@ const buildDefaultPrompt = () => {
 Task requirements:
 1) Read the provided data file content and create exactly one question in one sentence.
 2) The question type must be exactly one of:
-   - Data Preparation
+   - Dataset Management
    - Data Modeling
    - Open-ended Data Analysis
 3) Then produce an interaction trajectory using Action Tags.
@@ -549,6 +570,7 @@ const mapTask = (item, index = 0) => {
     workspaceTotal: workspaceProgress.workspaceTotal,
     workspaceProgressText: workspaceProgress.workspaceProgressText,
     datasetName: String(item?.dataset_name || item?.dataset?.name || item?.datasetName || '-'),
+    generatedDatasetId: Number(item?.generated_dataset_id || item?.generated_dataset?.id || 0),
     createdAt: String(item?.created_at || item?.insert_time || item?.createdAt || '-'),
     updatedAt: String(item?.updated_at || item?.update_time || item?.updatedAt || '-'),
     createdAtDisplay: formatDateTime(item?.created_at || item?.insert_time || item?.createdAt || '-'),
@@ -616,6 +638,7 @@ const refreshDatasetOptions = async () => {
     if (!validIds.has(Number(taskForm.value.datasetId))) {
       taskForm.value.datasetId = null
     }
+    hydrateQuerySelection()
   } catch {
     datasetOptions.value = []
     taskForm.value.datasetId = null
@@ -919,6 +942,55 @@ const startTask = async () => {
   }
 }
 
+const hydrateQuerySelection = () => {
+  const datasetId = Number(route.query.datasetId || 0)
+  if (Number.isFinite(datasetId) && datasetId > 0 && datasetOptions.value.some((item) => Number(item.id) === datasetId)) {
+    taskForm.value.datasetId = datasetId
+  }
+}
+
+const openGeneratedDataset = () => {
+  if (!selectedTask.value?.generatedDatasetId) return
+  router.push(`/data-preparation/${selectedTask.value.generatedDatasetId}`)
+}
+
+const useTaskInDistillation = () => {
+  if (!selectedTask.value?.id) return
+  router.push({
+    path: '/reasoning-data-distillation',
+    query: {
+      sourceType: 'trajectory_task',
+      taskId: String(selectedTask.value.id)
+    }
+  })
+}
+
+const useTaskInChat = () => {
+  if (!selectedTask.value?.id) return
+  router.push({
+    path: '/agent-interaction',
+    query: {
+      contextType: 'trajectory_task',
+      contextId: String(selectedTask.value.id),
+      contextLabel: getTaskDatasetName(selectedTask.value)
+    }
+  })
+}
+
+const importTaskIntoAssets = async () => {
+  if (!selectedTask.value?.id) return
+  try {
+    await importPlatformAsset({
+      source_type: 'trajectory_task',
+      source_id: Number(selectedTask.value.id),
+      target_folder_path: ''
+    })
+    setNotice(`Imported task #${selectedTask.value.id} into Agent Interaction assets.`, 'success')
+  } catch (error) {
+    setNotice(`Import failed. (${error?.message || 'unknown error'})`, 'error')
+  }
+}
+
 onMounted(async () => {
   document.addEventListener('click', handleClickOutsideDatasetDropdown)
   await refreshDatasetOptions()
@@ -937,6 +1009,13 @@ onBeforeUnmount(() => {
   resultModalInstance?.dispose()
   stopPolling()
 })
+
+watch(
+  () => route.query.datasetId,
+  () => {
+    hydrateQuerySelection()
+  }
+)
 </script>
 
 <style scoped>

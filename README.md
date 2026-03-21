@@ -5,7 +5,7 @@ Data Agent training platform frontend, migrated from the main framework of `Spat
 ## Core modules
 
 - Data Preparation
-- Reasoning Data Distillation
+- Reasoning Data Synthesis
 - Agentic Trajectory Synthesis
 - Agent Interaction
 - User Login / Logout (preserved)
