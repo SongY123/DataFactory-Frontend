@@ -53,6 +53,7 @@
             >
               <i class="bi bi-person-circle me-1"></i>
               {{ username || 'User' }}
+              <i class="bi user-menu-caret ms-2" :class="isUserMenuOpen ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
             </button>
             <ul v-if="isUserMenuOpen" class="dropdown-menu dropdown-menu-end user-menu-dropdown show" @click.stop>
               <li>
@@ -219,6 +220,11 @@ watch(() => route.fullPath, () => {
   background: transparent;
   cursor: pointer;
   text-decoration: none;
+}
+
+.user-menu-caret {
+  font-size: 0.78rem;
+  line-height: 1;
 }
 
 .user-menu-toggle:focus-visible {

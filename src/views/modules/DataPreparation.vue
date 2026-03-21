@@ -8,7 +8,7 @@
       <div class="hero-main">
         <div>
           <p class="eyebrow mb-2">Dataset Management</p>
-          <h2 class="hero-title mb-1">Dataset Library</h2>
+          <h2 class="hero-title mb-1">Datasets</h2>
           <p class="hero-copy mb-0">
             Manage local and HuggingFace datasets for downstream synthesis and distillation.
           </p>
@@ -16,7 +16,7 @@
 
         <div class="hero-meta-strip">
           <span class="hero-meta-pill">{{ filteredRows.length }} shown</span>
-          <span class="hero-meta-pill">{{ datasetRows.length }} total</span>
+          <span class="hero-meta-pill">{{ totalDatasetCount }} total</span>
           <span v-if="importingCount" class="hero-meta-pill accent">{{ importingCount }} importing</span>
           <span v-if="generatedCount" class="hero-meta-pill">{{ generatedCount }} generated</span>
         </div>
@@ -394,8 +394,8 @@ import { useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
 import {
   fetchCurrentSession,
-  fetchDatasets,
   importHuggingFaceDataset,
+  searchDatasets,
   uploadDataset
 } from '../../api/dataAgent'
 import { getStoredUsername } from '../../api/auth'
@@ -408,12 +408,19 @@ const isSubmittingUpload = ref(false)
 const isSubmittingHuggingFace = ref(false)
 const currentUsername = ref(getStoredUsername())
 const rawDatasets = ref([])
+const totalDatasetCount = ref(0)
+const importingCount = ref(0)
+const generatedCount = ref(0)
 const pendingSearchKeyword = ref('')
 const appliedSearchKeyword = ref('')
 const selectedFormats = ref([])
 const selectedLanguages = ref([])
 const selectedSizeLevels = ref([])
 const selectedStatuses = ref([])
+const appliedFormats = ref([])
+const appliedLanguages = ref([])
+const appliedSizeLevels = ref([])
+const appliedStatuses = ref([])
 const selectedDatasetFiles = ref([])
 const selectedCoverFile = ref(null)
 const importMode = ref('upload')
@@ -553,62 +560,17 @@ const normalizeDataset = (item = {}, index = 0) => {
 }
 
 const datasetRows = computed(() => rawDatasets.value.map((item, index) => normalizeDataset(item, index)))
-const importingCount = computed(() => datasetRows.value.filter((item) => item.isImporting).length)
-const generatedCount = computed(() => datasetRows.value.filter((item) => item.isGenerated).length)
-
-const formatOptions = computed(() => {
-  const extra = [...new Set(datasetRows.value.flatMap((row) => row.formatTags))].filter((tag) => !formatFilterPresets.includes(tag))
-  return [...formatFilterPresets, ...extra.sort()]
-})
-const languageOptions = computed(() => {
-  const extra = [...new Set(datasetRows.value.flatMap((row) => row.languageTags))].filter((tag) => !languageFilterPresets.includes(tag))
-  return [...languageFilterPresets, ...extra.sort()]
-})
-const statusOptions = computed(() => {
-  const extra = [...new Set(datasetRows.value.map((row) => row.status))].filter((status) => !statusFilterPresets.includes(status))
-  return [...statusFilterPresets, ...extra.sort((left, right) => (statusOrder[left] ?? 99) - (statusOrder[right] ?? 99) || left.localeCompare(right))]
-})
+const formatOptions = computed(() => [...formatFilterPresets])
+const languageOptions = computed(() => [...languageFilterPresets])
+const statusOptions = computed(() => [...statusFilterPresets])
 
 const toTimestamp = (value, fallback = 0) => {
   const time = new Date(value || '').getTime()
   return Number.isFinite(time) ? time : fallback
 }
 
-const getSizeBucket = (size) => {
-  const value = Number(size || 0)
-  if (value >= 1024 * 1024 * 1024) return 'gb'
-  if (value >= 1024 * 1024) return 'mb'
-  return 'kb'
-}
-
-const expandFormatAliases = (tags = []) => {
-  const values = new Set()
-  tags.forEach((tag) => {
-    const normalized = String(tag || '').trim().toLowerCase()
-    if (!normalized) return
-    values.add(normalized)
-    if (normalized === 'excel' || normalized === 'xlsx' || normalized === 'xls') {
-      values.add('excel')
-      values.add('xlsx')
-      values.add('xls')
-    }
-  })
-  return values
-}
-
 const filteredRows = computed(() => {
-  const keyword = appliedSearchKeyword.value.trim().toLowerCase()
-  const rows = datasetRows.value.filter((row) => {
-    const matchesKeyword = !keyword || row.name.toLowerCase().includes(keyword)
-    const rowFormats = expandFormatAliases(row.formatTags)
-    const matchesFormat = !selectedFormats.value.length || selectedFormats.value.some((tag) => rowFormats.has(tag))
-    const matchesLanguage = !selectedLanguages.value.length || selectedLanguages.value.some((tag) => row.languageTags.includes(tag))
-    const matchesSize = !selectedSizeLevels.value.length || selectedSizeLevels.value.includes(getSizeBucket(row.size))
-    const matchesStatus = !selectedStatuses.value.length || selectedStatuses.value.includes(row.status)
-    return matchesKeyword && matchesFormat && matchesLanguage && matchesSize && matchesStatus
-  })
-
-  return [...rows].sort((left, right) => {
+  return [...datasetRows.value].sort((left, right) => {
     const delta = toTimestamp(right.updatedAt, right.id) - toTimestamp(left.updatedAt, left.id)
     return delta !== 0 ? delta : right.id - left.id
   })
@@ -671,13 +633,18 @@ const toggleFilterSelection = (targetRef, value) => {
   const current = Array.isArray(targetRef.value) ? targetRef.value : []
   if (current.includes(value)) {
     targetRef.value = current.filter((item) => item !== value)
-    return
+  } else {
+    targetRef.value = [...current, value]
   }
-  targetRef.value = [...current, value]
 }
 
-const applySearch = () => {
+const applySearch = async () => {
   appliedSearchKeyword.value = pendingSearchKeyword.value.trim()
+  appliedFormats.value = [...selectedFormats.value]
+  appliedLanguages.value = [...selectedLanguages.value]
+  appliedSizeLevels.value = [...selectedSizeLevels.value]
+  appliedStatuses.value = [...selectedStatuses.value]
+  await loadDatasets()
 }
 
 const toggleFiltersCollapsed = () => {
@@ -766,12 +733,20 @@ const refreshPolling = () => {
     window.clearInterval(pollingTimer)
     pollingTimer = null
   }
-  if (datasetRows.value.some((row) => row.isImporting)) {
+  if (importingCount.value > 0) {
     pollingTimer = window.setInterval(() => {
       loadDatasets(true)
     }, 3000)
   }
 }
+
+const buildDatasetQueryPayload = () => ({
+  name_keyword: appliedSearchKeyword.value,
+  format_tags: [...appliedFormats.value],
+  language_tags: [...appliedLanguages.value],
+  size_levels: [...appliedSizeLevels.value],
+  statuses: [...appliedStatuses.value]
+})
 
 const loadDatasets = async (silent = false) => {
   if (!silent) {
@@ -779,8 +754,11 @@ const loadDatasets = async (silent = false) => {
     notice.value = ''
   }
   try {
-    const response = await fetchDatasets()
+    const response = await searchDatasets(buildDatasetQueryPayload())
     rawDatasets.value = Array.isArray(response?.data) ? response.data : []
+    totalDatasetCount.value = Number(response?.meta?.total_count ?? rawDatasets.value.length)
+    importingCount.value = Number(response?.meta?.importing_count ?? rawDatasets.value.filter((item) => normalizeDataset(item).isImporting).length)
+    generatedCount.value = Number(response?.meta?.generated_count ?? rawDatasets.value.filter((item) => normalizeDataset(item).isGenerated).length)
   } catch (error) {
     notice.value = error.message || 'Failed to load datasets.'
   } finally {

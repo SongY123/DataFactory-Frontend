@@ -39,6 +39,13 @@ const request = async (path, options = {}) => {
 
 export const fetchDatasets = () => request('/datasets')
 
+export const searchDatasets = (payload = {}) =>
+  request('/datasets/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  })
+
 export const fetchCurrentSession = () => request('/auth/session')
 
 export const createDataset = (payload) =>
