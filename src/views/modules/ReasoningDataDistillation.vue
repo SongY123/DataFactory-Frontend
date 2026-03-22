@@ -141,6 +141,24 @@
                 </div>
               </div>
 
+              <div class="mt-1">
+                <label class="small text-muted mb-1">Save Path</label>
+                <div class="save-path-row">
+                  <input
+                    v-model.trim="form.savePath"
+                    type="text"
+                    class="form-control"
+                    placeholder="Leave empty to use backend default output path"
+                  >
+                  <button class="btn btn-outline-secondary" type="button" @click="browseSavePath">
+                    Browse
+                  </button>
+                </div>
+                <div class="small text-muted mt-1">
+                  {{ form.savePath || 'Choose a local directory on this computer. In browser mode you can also type an absolute path manually.' }}
+                </div>
+              </div>
+
               <div class="advanced-config-panel">
                 <button
                   class="advanced-config-toggle"
@@ -154,7 +172,7 @@
 
                 <div v-if="advancedConfigOpen" class="advanced-config-body">
                   <div class="row g-2">
-                    <div class="col-12 col-md-4">
+                    <div class="col-12">
                       <label class="small text-muted mb-1">Parallelism</label>
                       <input
                         v-model.number="form.parallelism"
@@ -166,7 +184,7 @@
                       >
                       <div class="small text-muted mt-1">Controls concurrent synthesis threads per task.</div>
                     </div>
-                    <div class="col-12 col-md-8">
+                    <div class="col-12">
                       <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
                         <label class="small text-muted mb-0">LLM API Config (JSON)</label>
                         <div class="d-flex flex-wrap gap-2">
@@ -356,6 +374,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
+import { chooseLocalDirectory } from '../../utils/desktop'
 import {
   createReasoningDistillationTask,
   fetchDatasets,
@@ -424,7 +443,8 @@ const form = ref({
   llmBaseUrl: API_LLM_BASE_URL,
   llmModelName: API_LLM_MODEL_NAME,
   parallelism: 1,
-  llmParamsJson: ''
+  savePath: '',
+  llmParamsJson: JSON.stringify(DEFAULT_LLM_PARAMS_TEMPLATE, null, 2)
 })
 
 let pollTimer = null
@@ -585,6 +605,13 @@ const normalizeLlmParamsJson = (value) => {
     throw new Error('LLM API Config must be a JSON object.')
   }
   return JSON.stringify(parsed)
+}
+
+const browseSavePath = async () => {
+  const selected = await chooseLocalDirectory()
+  if (selected) {
+    form.value.savePath = selected
+  }
 }
 
 const selectDataset = (datasetId) => {
@@ -767,6 +794,7 @@ const startTask = async () => {
       llm_base_url: form.value.llmBaseUrl,
       llm_model_name: form.value.llmModelName,
       parallelism: Math.max(1, Math.min(32, Number(form.value.parallelism) || 1)),
+      save_path: String(form.value.savePath || '').trim() || undefined,
       llm_params_json: llmParamsJson
     }
     const response = await createReasoningDistillationTask(payload)
@@ -1020,6 +1048,12 @@ onBeforeUnmount(() => {
 .selected-dataset-remove:hover {
   background: rgba(42, 65, 102, 0.16);
   color: #223854;
+}
+
+.save-path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
 }
 
 .advanced-config-panel {

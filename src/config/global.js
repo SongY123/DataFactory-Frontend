@@ -1,6 +1,8 @@
+import { getRuntimeApiBase } from '../utils/desktop'
+
 export const config = {
   appName: 'DataFactory',
-  apiBase: '/api'
+  apiBase: getRuntimeApiBase()
 }
 
 export const workflowModules = [

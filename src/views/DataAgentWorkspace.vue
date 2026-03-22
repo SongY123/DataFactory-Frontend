@@ -5,7 +5,7 @@
         <div class="sidebar-head-top">
           <div>
             <p class="text-uppercase text-muted fw-semibold small mb-2">Workflow</p>
-            <h5 v-if="!isSidebarCollapsed" class="mb-2">Data Agent Training</h5>
+            <h5 v-if="!isSidebarCollapsed" class="mb-2">Data Agent Factory</h5>
           </div>
           <button
             type="button"

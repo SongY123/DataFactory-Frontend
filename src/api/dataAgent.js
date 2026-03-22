@@ -134,6 +134,20 @@ export const postAgentMessage = (payload) =>
 
 export const fetchAgentAssetTree = () => request('/assets/tree')
 
+export const fetchSandboxEnvironments = () => request('/sandbox-environments')
+
+export const createSandboxEnvironment = (payload) =>
+  request('/sandbox-environments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+export const deleteSandboxEnvironment = (environmentId) =>
+  request(`/sandbox-environments/${encodeURIComponent(environmentId)}`, {
+    method: 'DELETE'
+  })
+
 export const createAgentAssetFolder = (payload) =>
   request('/folders', {
     method: 'POST',
@@ -255,6 +269,9 @@ export const createAgenticSynthesisTask = (payload) =>
     body: JSON.stringify(payload)
   })
 
+export const fetchAgenticSynthesisOutputPathOptions = () =>
+  request('/agentic-synthesis/output-path-options')
+
 export const fetchReasoningDistillationTasks = (limit = 20) =>
   request(`/reasoning-distillation/tasks?limit=${encodeURIComponent(limit)}`)
 
@@ -273,3 +290,6 @@ export const createReasoningDistillationTask = (payload) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
+
+export const fetchReasoningDistillationOutputPathOptions = () =>
+  request('/reasoning-distillation/output-path-options')

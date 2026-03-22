@@ -25,6 +25,25 @@ npm run dev
 
 Default dev server: `http://localhost:8001`
 
+## Desktop (Electron)
+
+```bash
+npm install
+npm run desktop:dev
+```
+
+Desktop mode will:
+- start the Vue renderer in Vite dev mode
+- launch the local FastAPI backend from `../DataFactory`
+- expose a native directory picker for local save paths
+
+To run the built desktop renderer:
+
+```bash
+npm run build
+npm run desktop
+```
+
 ## Build
 
 ```bash

@@ -1,6 +1,15 @@
 ﻿<template>
   <div class="interaction-shell h-100">
     <aside class="workspace-panel">
+      <div class="environment-panel">
+        <SandboxEnvironmentSelector
+          v-model="selectedSandboxEnvironmentId"
+          label="Environment"
+          description="Choose the server-side Python sandbox used for this chat."
+          :disabled="isBusy"
+        />
+      </div>
+
       <div class="panel-header">
         <div>
           <h6 class="mb-1">Data Assets</h6>
@@ -547,6 +556,7 @@
 import { Modal } from 'bootstrap'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import SandboxEnvironmentSelector from '../../components/SandboxEnvironmentSelector.vue'
 import {
   createAgentAssetFolder,
   deleteAgentAssetFile,
@@ -575,6 +585,8 @@ const modelConfigModalRef = ref(null)
 const modelPickerRef = ref(null)
 const conversationPickerRef = ref(null)
 const pendingFolderInputRef = ref(null)
+const selectedSandboxEnvironmentId = ref('')
+const hasInitializedSandboxEnvironment = ref(false)
 const platformDatasets = ref([])
 const platformTrajectoryTasks = ref([])
 const platformDistillationTasks = ref([])
@@ -2196,7 +2208,8 @@ async function submitPrompt() {
         request_id: conversation.sessionId || undefined,
         selected_file_path: queuedFiles.length === 1 ? queuedFiles[0].path : undefined,
         selected_file_paths: queuedFiles.length ? queuedFiles.map((file) => file.path) : undefined,
-        model_config: buildSelectedModelPayload()
+        model_config: buildSelectedModelPayload(),
+        sandbox_environment_id: cleanString(selectedSandboxEnvironmentId.value) || undefined
       },
       {
         signal: streamController.signal,
@@ -2287,6 +2300,22 @@ watch(
   }
 )
 
+watch(
+  selectedSandboxEnvironmentId,
+  (nextValue, previousValue) => {
+    const nextId = cleanString(nextValue)
+    const prevId = cleanString(previousValue)
+    if (!hasInitializedSandboxEnvironment.value) {
+      if (nextId) {
+        hasInitializedSandboxEnvironment.value = true
+      }
+      return
+    }
+    if (!nextId || nextId === prevId) return
+    syncReset('Environment changed. A new agent session will start on the next prompt.')
+  }
+)
+
 </script>
 
 <style scoped>
@@ -2308,6 +2337,12 @@ watch(
   overflow: hidden;
 }
 
+.environment-panel {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fcfcfd;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -2320,6 +2355,14 @@ watch(
 .platform-context-panel {
   border-bottom: 1px solid #e5e7eb;
   background: #fcfcfd;
+}
+
+:global(.modal) {
+  z-index: 1400;
+}
+
+:global(.modal-backdrop) {
+  z-index: 1390;
 }
 
 .platform-context-header {
@@ -3703,5 +3746,3 @@ watch(
   }
 }
 </style>
-
-

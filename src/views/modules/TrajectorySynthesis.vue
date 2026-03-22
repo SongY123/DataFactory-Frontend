@@ -30,6 +30,13 @@
             <h6 class="card-title mb-3">Task Configuration</h6>
 
             <form class="d-flex flex-column gap-3 task-config-form" @submit.prevent="startTask">
+              <SandboxEnvironmentSelector
+                v-model="taskForm.sandboxEnvironmentId"
+                label="Environment"
+                description="Choose the server-side Python sandbox used for trajectory execution."
+                :disabled="isSubmitting"
+              />
+
               <label class="small text-muted mb-0">Prompt</label>
               <textarea
                 v-model="taskForm.prompt"
@@ -144,6 +151,24 @@
                 </div>
               </div>
 
+              <div class="mt-1">
+                <label class="small text-muted mb-1">Save Path</label>
+                <div class="save-path-row">
+                  <input
+                    v-model.trim="taskForm.savePath"
+                    type="text"
+                    class="form-control"
+                    placeholder="Leave empty to use backend default output path"
+                  >
+                  <button class="btn btn-outline-secondary" type="button" @click="browseSavePath">
+                    Browse
+                  </button>
+                </div>
+                <div class="small text-muted mt-1">
+                  {{ taskForm.savePath || 'Choose a local directory on this computer. In browser mode you can also type an absolute path manually.' }}
+                </div>
+              </div>
+
               <div class="advanced-config-panel">
                 <button
                   class="advanced-config-toggle"
@@ -157,7 +182,7 @@
 
                 <div v-if="advancedConfigOpen" class="advanced-config-body">
                   <div class="row g-2">
-                    <div class="col-12 col-md-4">
+                    <div class="col-12">
                       <label class="small text-muted mb-1">Parallelism</label>
                       <input
                         v-model.number="taskForm.parallelism"
@@ -169,7 +194,7 @@
                       >
                       <div class="small text-muted mt-1">Controls concurrent synthesis threads per task.</div>
                     </div>
-                    <div class="col-12 col-md-8">
+                    <div class="col-12">
                       <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
                         <label class="small text-muted mb-0">LLM API Config (JSON)</label>
                         <div class="d-flex flex-wrap gap-2">
@@ -213,23 +238,6 @@
             </article>
           </div>
         </div>
-
-        <article v-if="selectedTask" class="card border-0 shadow-sm mt-3">
-          <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div>
-              <div class="small text-muted">Selected Task</div>
-              <div class="fw-semibold">#{{ selectedTask.id }} · {{ getTaskDatasetName(selectedTask) }}</div>
-            </div>
-            <div class="d-flex gap-2 flex-wrap">
-              <button v-if="selectedTask.generatedDatasetId" class="btn btn-outline-primary btn-sm" type="button" @click="openGeneratedDataset">
-                Open Generated Dataset
-              </button>
-              <button v-if="selectedTask.id" class="btn btn-outline-dark btn-sm" type="button" @click="useTaskInDistillation">
-                Reasoning Data Synthesis
-              </button>
-            </div>
-          </div>
-        </article>
 
         <article class="card border-0 shadow-sm mt-3 task-overview-card">
           <div class="card-body d-flex flex-column gap-2 h-100">
@@ -359,6 +367,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
+import SandboxEnvironmentSelector from '../../components/SandboxEnvironmentSelector.vue'
+import { chooseLocalDirectory } from '../../utils/desktop'
 import {
   createAgenticSynthesisTask,
   fetchAgenticSynthesisTaskResults,
@@ -446,7 +456,9 @@ const taskForm = ref({
   llmModelName: API_LLM_MODEL_NAME,
   datasetIds: [],
   parallelism: 1,
-  llmParamsJson: ''
+  savePath: '',
+  sandboxEnvironmentId: '',
+  llmParamsJson: JSON.stringify(DEFAULT_LLM_PARAMS_TEMPLATE, null, 2)
 })
 
 let pollTimer = null
@@ -540,6 +552,13 @@ const normalizeLlmParamsJson = (value) => {
     throw new Error('LLM API Config must be a JSON object.')
   }
   return JSON.stringify(parsed)
+}
+
+const browseSavePath = async () => {
+  const selected = await chooseLocalDirectory()
+  if (selected) {
+    taskForm.value.savePath = selected
+  }
 }
 
 watch(
@@ -1028,6 +1047,8 @@ const startTask = async () => {
         llm_model_name: taskForm.value.llmModelName,
         dataset_id: datasetId,
         parallelism: Math.max(1, Math.min(32, Number(taskForm.value.parallelism) || 1)),
+        save_path: String(taskForm.value.savePath || '').trim() || undefined,
+        sandbox_environment_id: String(taskForm.value.sandboxEnvironmentId || '').trim() || undefined,
         llm_params_json: llmParamsJson
       })
       const optimisticTask = mapTask(response?.data ?? response)
@@ -1268,6 +1289,12 @@ watch(
 .selected-dataset-remove:hover {
   background: rgba(42, 65, 102, 0.16);
   color: #223854;
+}
+
+.save-path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
 }
 
 .advanced-config-panel {

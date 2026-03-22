@@ -7,10 +7,9 @@
     <section class="hero-card">
       <div class="hero-main">
         <div>
-          <p class="eyebrow mb-2">Dataset Management</p>
           <h2 class="hero-title mb-1">Datasets</h2>
           <p class="hero-copy mb-0">
-            Manage local and HuggingFace datasets for downstream synthesis and distillation.
+            Manage datasets for downstream data synthesis.
           </p>
         </div>
 
@@ -23,7 +22,7 @@
       </div>
 
       <button class="btn btn-primary hero-add-btn" type="button" @click="openImportModal">
-        Add Dataset
+        Add
       </button>
     </section>
 
@@ -65,7 +64,7 @@
               class="filter-chip"
               :class="{ active: selectedFormats.includes(tag) }"
               type="button"
-              @click="toggleFilterSelection(selectedFormats, tag)"
+              @click="toggleFilterSelection('formats', tag)"
             >
               {{ tag }}
             </button>
@@ -81,7 +80,7 @@
               class="filter-chip"
               :class="{ active: selectedLanguages.includes(tag) }"
               type="button"
-              @click="toggleFilterSelection(selectedLanguages, tag)"
+              @click="toggleFilterSelection('languages', tag)"
             >
               {{ tag }}
             </button>
@@ -97,7 +96,7 @@
               class="filter-chip"
               :class="{ active: selectedSizeLevels.includes(item.value) }"
               type="button"
-              @click="toggleFilterSelection(selectedSizeLevels, item.value)"
+              @click="toggleFilterSelection('sizes', item.value)"
             >
               {{ item.label }}
             </button>
@@ -113,7 +112,7 @@
               class="filter-chip"
               :class="{ active: selectedStatuses.includes(status) }"
               type="button"
-              @click="toggleFilterSelection(selectedStatuses, status)"
+              @click="toggleFilterSelection('statuses', status)"
             >
               {{ formatStatusLabel(status) }}
             </button>
@@ -629,7 +628,18 @@ const closeImportModal = () => {
   importModalInstance?.hide()
 }
 
-const toggleFilterSelection = (targetRef, value) => {
+const getFilterRef = (group) => {
+  if (group === 'formats') return selectedFormats
+  if (group === 'languages') return selectedLanguages
+  if (group === 'sizes') return selectedSizeLevels
+  if (group === 'statuses') return selectedStatuses
+  return null
+}
+
+const toggleFilterSelection = (group, value) => {
+  const targetRef = getFilterRef(group)
+  if (!targetRef) return
+
   const current = Array.isArray(targetRef.value) ? targetRef.value : []
   if (current.includes(value)) {
     targetRef.value = current.filter((item) => item !== value)
