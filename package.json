@@ -3,19 +3,26 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "electron/main.mjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "desktop": "electron electron/main.mjs",
+    "desktop:dev": "DATAFACTORY_ELECTRON_DEV=1 concurrently -k \"vite --host 127.0.0.1 --port 8001\" \"wait-on tcp:127.0.0.1:8001 && electron electron/main.mjs\""
   },
   "dependencies": {
     "bootstrap": "^5.3.8",
     "bootstrap-icons": "^1.13.1",
+    "markdown-it": "^14.1.1",
     "vue": "^3.5.22",
     "vue-router": "^4.5.1"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
-    "vite": "^7.1.12"
+    "concurrently": "^9.2.1",
+    "electron": "^37.3.1",
+    "vite": "^7.1.12",
+    "wait-on": "^8.0.5"
   }
 }

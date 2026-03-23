@@ -30,6 +30,13 @@
             <h6 class="card-title mb-3">Task Configuration</h6>
 
             <form class="d-flex flex-column gap-3 task-config-form" @submit.prevent="startTask">
+              <SandboxEnvironmentSelector
+                v-model="taskForm.sandboxEnvironmentId"
+                label="Environment"
+                description="Choose the server-side Python sandbox used for trajectory execution."
+                :disabled="isSubmitting"
+              />
+
               <label class="small text-muted mb-0">Prompt</label>
               <textarea
                 v-model="taskForm.prompt"
@@ -116,11 +123,96 @@
                         <input
                           class="form-check-input"
                           type="checkbox"
-                          :checked="Number(taskForm.datasetId) === Number(item.id)"
+                          :checked="taskForm.datasetIds.includes(Number(item.id))"
                           @change="selectDataset(item.id)"
                         >
                         <span class="small">{{ item.name }}</span>
                       </label>
+                    </div>
+                  </div>
+
+                  <div v-if="selectedDatasetItems.length" class="selected-dataset-list">
+                    <div
+                      v-for="item in selectedDatasetItems"
+                      :key="`selected-dataset-${item.id}`"
+                      class="selected-dataset-chip"
+                    >
+                      <span class="selected-dataset-name">{{ item.name }}</span>
+                      <button
+                        class="selected-dataset-remove"
+                        type="button"
+                        :aria-label="`Remove ${item.name}`"
+                        @click="removeSelectedDataset(item.id)"
+                      >
+                        <i class="bi bi-x-lg"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-1">
+                <label class="small text-muted mb-1">Save Path</label>
+                <div class="save-path-row">
+                  <input
+                    v-model.trim="taskForm.savePath"
+                    type="text"
+                    class="form-control"
+                    placeholder="Leave empty to use backend default output path"
+                  >
+                  <button class="btn btn-outline-secondary" type="button" @click="browseSavePath">
+                    Browse
+                  </button>
+                </div>
+                <div class="small text-muted mt-1">
+                  {{ taskForm.savePath || 'Choose a local directory on this computer. In browser mode you can also type an absolute path manually.' }}
+                </div>
+              </div>
+
+              <div class="advanced-config-panel">
+                <button
+                  class="advanced-config-toggle"
+                  type="button"
+                  @click="advancedConfigOpen = !advancedConfigOpen"
+                  :aria-expanded="advancedConfigOpen ? 'true' : 'false'"
+                >
+                  <span>Advanced Config</span>
+                  <span class="dataset-dropdown-caret" :class="{ open: advancedConfigOpen }">▾</span>
+                </button>
+
+                <div v-if="advancedConfigOpen" class="advanced-config-body">
+                  <div class="row g-2">
+                    <div class="col-12">
+                      <label class="small text-muted mb-1">Parallelism</label>
+                      <input
+                        v-model.number="taskForm.parallelism"
+                        type="number"
+                        class="form-control"
+                        min="1"
+                        max="32"
+                        step="1"
+                      >
+                      <div class="small text-muted mt-1">Controls concurrent synthesis threads per task.</div>
+                    </div>
+                    <div class="col-12">
+                      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+                        <label class="small text-muted mb-0">LLM API Config (JSON)</label>
+                        <div class="d-flex flex-wrap gap-2">
+                          <button class="btn btn-outline-primary btn-sm" type="button" @click="applyDefaultLlmParamsTemplate">
+                            Apply Default Template
+                          </button>
+                          <button class="btn btn-outline-secondary btn-sm" type="button" @click="clearLlmParamsTemplate">
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                      <textarea
+                        v-model="taskForm.llmParamsJson"
+                        class="form-control advanced-config-textarea"
+                        rows="7"
+                        placeholder="Leave empty to use backend defaults"
+                      ></textarea>
+                      <div class="small text-muted mt-1">Optional raw request parameters such as temperature, top_p, max_tokens, or frequency_penalty.</div>
                     </div>
                   </div>
                 </div>
@@ -273,16 +365,22 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
+import SandboxEnvironmentSelector from '../../components/SandboxEnvironmentSelector.vue'
+import { chooseLocalDirectory } from '../../utils/desktop'
 import {
   createAgenticSynthesisTask,
   fetchAgenticSynthesisTaskResults,
   fetchAgenticSynthesisTask,
   fetchAgenticSynthesisTasks,
-  fetchDatasets
+  fetchDatasets,
+  importPlatformAsset
 } from '../../api/dataAgent'
 
 const DEFAULT_ACTION_TAGS = ['Analyze', 'Understand', 'Code', 'Execute', 'Answer']
+const route = useRoute()
+const router = useRouter()
 
 const isLoading = ref(false)
 const isSubmitting = ref(false)
@@ -310,6 +408,11 @@ const API_LLM_BASE_URL = 'https://api.openai.com/v1'
 const API_LLM_MODEL_NAME = 'gpt-4o-mini'
 const LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1'
 const LOCAL_LLM_MODEL_NAME = 'qwen2.5:7b-instruct'
+const DEFAULT_LLM_PARAMS_TEMPLATE = {
+  temperature: 0.2,
+  top_p: 0.95,
+  max_tokens: 4096
+}
 
 const buildTrajectoryExample = () => DEFAULT_ACTION_TAGS.map((tag) => `<${tag}>...</${tag}>`).join('')
 
@@ -320,7 +423,7 @@ const buildDefaultPrompt = () => {
 Task requirements:
 1) Read the provided data file content and create exactly one question in one sentence.
 2) The question type must be exactly one of:
-   - Data Preparation
+   - Dataset Management
    - Data Modeling
    - Open-ended Data Analysis
 3) Then produce an interaction trajectory using Action Tags.
@@ -343,6 +446,7 @@ Tag writing rules:
 }
 
 const isPromptCustomized = ref(false)
+const advancedConfigOpen = ref(false)
 
 const taskForm = ref({
   prompt: buildDefaultPrompt(),
@@ -350,7 +454,11 @@ const taskForm = ref({
   llmApiKey: '',
   llmBaseUrl: API_LLM_BASE_URL,
   llmModelName: API_LLM_MODEL_NAME,
-  datasetId: null
+  datasetIds: [],
+  parallelism: 1,
+  savePath: '',
+  sandboxEnvironmentId: '',
+  llmParamsJson: JSON.stringify(DEFAULT_LLM_PARAMS_TEMPLATE, null, 2)
 })
 
 let pollTimer = null
@@ -403,15 +511,19 @@ const pagedTasks = computed(() => {
 })
 
 const selectedDatasetNames = computed(() => {
-  const selectedId = Number(taskForm.value.datasetId || 0)
   return datasetOptions.value
-    .filter((item) => Number(item.id) === selectedId)
+    .filter((item) => taskForm.value.datasetIds.includes(Number(item.id)))
     .map((item) => item.name)
 })
 
+const selectedDatasetItems = computed(() => {
+  return datasetOptions.value.filter((item) => taskForm.value.datasetIds.includes(Number(item.id)))
+})
+
 const datasetDropdownLabel = computed(() => {
-  if (!taskForm.value.datasetId) return 'Select one dataset'
-  return selectedDatasetNames.value[0] || 'Select one dataset'
+  if (!taskForm.value.datasetIds.length) return 'Select datasets'
+  if (taskForm.value.datasetIds.length === 1) return selectedDatasetNames.value[0] || 'Select datasets'
+  return `${taskForm.value.datasetIds.length} datasets selected`
 })
 
 const markPromptCustomized = () => {
@@ -421,6 +533,32 @@ const markPromptCustomized = () => {
 const resetPromptToTemplate = () => {
   isPromptCustomized.value = false
   taskForm.value.prompt = buildDefaultPrompt()
+}
+
+const applyDefaultLlmParamsTemplate = () => {
+  taskForm.value.llmParamsJson = JSON.stringify(DEFAULT_LLM_PARAMS_TEMPLATE, null, 2)
+  advancedConfigOpen.value = true
+}
+
+const clearLlmParamsTemplate = () => {
+  taskForm.value.llmParamsJson = ''
+}
+
+const normalizeLlmParamsJson = (value) => {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const parsed = JSON.parse(text)
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+    throw new Error('LLM API Config must be a JSON object.')
+  }
+  return JSON.stringify(parsed)
+}
+
+const browseSavePath = async () => {
+  const selected = await chooseLocalDirectory()
+  if (selected) {
+    taskForm.value.savePath = selected
+  }
 }
 
 watch(
@@ -549,6 +687,7 @@ const mapTask = (item, index = 0) => {
     workspaceTotal: workspaceProgress.workspaceTotal,
     workspaceProgressText: workspaceProgress.workspaceProgressText,
     datasetName: String(item?.dataset_name || item?.dataset?.name || item?.datasetName || '-'),
+    generatedDatasetId: Number(item?.generated_dataset_id || item?.generated_dataset?.id || 0),
     createdAt: String(item?.created_at || item?.insert_time || item?.createdAt || '-'),
     updatedAt: String(item?.updated_at || item?.update_time || item?.updatedAt || '-'),
     createdAtDisplay: formatDateTime(item?.created_at || item?.insert_time || item?.createdAt || '-'),
@@ -613,24 +752,28 @@ const refreshDatasetOptions = async () => {
     const response = await fetchDatasets()
     datasetOptions.value = mapDatasetList(response)
     const validIds = new Set(datasetOptions.value.map((item) => Number(item.id)))
-    if (!validIds.has(Number(taskForm.value.datasetId))) {
-      taskForm.value.datasetId = null
-    }
+    taskForm.value.datasetIds = taskForm.value.datasetIds.filter((id) => validIds.has(Number(id)))
+    hydrateQuerySelection()
   } catch {
     datasetOptions.value = []
-    taskForm.value.datasetId = null
+    taskForm.value.datasetIds = []
   }
 }
 
 const selectDataset = (datasetId) => {
   const nextId = Number(datasetId)
   if (!Number.isFinite(nextId) || nextId <= 0) return
-  if (Number(taskForm.value.datasetId) === nextId) {
-    taskForm.value.datasetId = null
-  } else {
-    taskForm.value.datasetId = nextId
+  if (taskForm.value.datasetIds.includes(nextId)) {
+    taskForm.value.datasetIds = taskForm.value.datasetIds.filter((id) => Number(id) !== nextId)
+    return
   }
-  datasetDropdownOpen.value = false
+  taskForm.value.datasetIds = [...taskForm.value.datasetIds, nextId]
+}
+
+const removeSelectedDataset = (datasetId) => {
+  const targetId = Number(datasetId)
+  if (!Number.isFinite(targetId) || targetId <= 0) return
+  taskForm.value.datasetIds = taskForm.value.datasetIds.filter((id) => Number(id) !== targetId)
 }
 
 const toggleDatasetDropdown = () => {
@@ -874,48 +1017,115 @@ const startTask = async () => {
     setNotice('API model type requires LLM API Key.', 'error')
     return
   }
-  if (!taskForm.value.datasetId) {
-    setNotice('Please select one dataset.', 'error')
+  if (!taskForm.value.datasetIds.length) {
+    setNotice('Please select at least one dataset.', 'error')
     return
   }
 
   isSubmitting.value = true
-  setNotice('Starting task...', 'info')
+  setNotice('Starting tasks...', 'info')
 
-  const selectedDatasetId = Number(taskForm.value.datasetId)
-  if (!Number.isFinite(selectedDatasetId) || selectedDatasetId <= 0) {
-    setNotice('Selected dataset is invalid.', 'error')
+  const selectedDatasetIds = taskForm.value.datasetIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0)
+
+  if (!selectedDatasetIds.length) {
+    setNotice('Selected datasets are invalid.', 'error')
     isSubmitting.value = false
     return
   }
 
-  const payload = {
-    prompt: taskForm.value.prompt,
-    action_tags: [...DEFAULT_ACTION_TAGS],
-    llm_api_key: taskForm.value.modelProvider === 'local' ? 'local' : taskForm.value.llmApiKey,
-    llm_base_url: taskForm.value.llmBaseUrl,
-    llm_model_name: taskForm.value.llmModelName,
-    dataset_id: selectedDatasetId
-  }
-
   try {
-    const response = await createAgenticSynthesisTask(payload)
-    const created = response?.data ?? response
-    const optimisticTask = mapTask(created)
-
-    if (!tasks.value.some((item) => item.id === optimisticTask.id)) {
-      tasks.value.unshift(optimisticTask)
+    const llmParamsJson = normalizeLlmParamsJson(taskForm.value.llmParamsJson)
+    const createdTasks = []
+    for (const datasetId of selectedDatasetIds) {
+      const response = await createAgenticSynthesisTask({
+        prompt: taskForm.value.prompt,
+        action_tags: [...DEFAULT_ACTION_TAGS],
+        llm_api_key: taskForm.value.modelProvider === 'local' ? 'local' : taskForm.value.llmApiKey,
+        llm_base_url: taskForm.value.llmBaseUrl,
+        llm_model_name: taskForm.value.llmModelName,
+        dataset_id: datasetId,
+        parallelism: Math.max(1, Math.min(32, Number(taskForm.value.parallelism) || 1)),
+        save_path: String(taskForm.value.savePath || '').trim() || undefined,
+        sandbox_environment_id: String(taskForm.value.sandboxEnvironmentId || '').trim() || undefined,
+        llm_params_json: llmParamsJson
+      })
+      const optimisticTask = mapTask(response?.data ?? response)
+      createdTasks.push(optimisticTask)
+      if (!tasks.value.some((item) => item.id === optimisticTask.id)) {
+        tasks.value.unshift(optimisticTask)
+      }
     }
 
-    selectedTaskId.value = optimisticTask.id
+    const latestTask = createdTasks[createdTasks.length - 1]
+    selectedTaskId.value = latestTask?.id || null
     taskPanelMode.value = 'tasks'
-    await inspectTask(optimisticTask.id, { silent: true })
-    setNotice('Task started successfully.', 'success')
+    if (latestTask?.id) {
+      await inspectTask(latestTask.id, { silent: true })
+    }
+    setNotice(
+      createdTasks.length === 1
+        ? 'Task started successfully.'
+        : `${createdTasks.length} tasks started successfully.`,
+      'success'
+    )
   } catch (error) {
     setNotice(`Failed to start task. (${error?.message || 'backend error'})`, 'error')
   } finally {
     isSubmitting.value = false
     await refreshTasks({ silent: true })
+  }
+}
+
+const hydrateQuerySelection = () => {
+  const datasetId = Number(route.query.datasetId || 0)
+  if (Number.isFinite(datasetId) && datasetId > 0 && datasetOptions.value.some((item) => Number(item.id) === datasetId)) {
+    taskForm.value.datasetIds = [datasetId]
+    return
+  }
+  if (route.query.datasetId != null && route.query.datasetId !== '') {
+    taskForm.value.datasetIds = []
+  }
+}
+
+const openGeneratedDataset = () => {
+  if (!selectedTask.value?.generatedDatasetId) return
+  router.push(`/data-preparation/${selectedTask.value.generatedDatasetId}`)
+}
+
+const useTaskInDistillation = () => {
+  if (!selectedTask.value?.id) return
+  const datasetId = Number(selectedTask.value.generatedDatasetId || selectedTask.value.datasetId || 0)
+  router.push({
+    path: '/reasoning-data-distillation',
+    query: datasetId > 0 ? { datasetId: String(datasetId) } : {}
+  })
+}
+
+const useTaskInChat = () => {
+  if (!selectedTask.value?.id) return
+  router.push({
+    path: '/agent-interaction',
+    query: {
+      contextType: 'trajectory_task',
+      contextId: String(selectedTask.value.id),
+      contextLabel: getTaskDatasetName(selectedTask.value)
+    }
+  })
+}
+
+const importTaskIntoAssets = async () => {
+  if (!selectedTask.value?.id) return
+  try {
+    await importPlatformAsset({
+      source_type: 'trajectory_task',
+      source_id: Number(selectedTask.value.id),
+      target_folder_path: ''
+    })
+    setNotice(`Imported task #${selectedTask.value.id} into Agent Interaction assets.`, 'success')
+  } catch (error) {
+    setNotice(`Import failed. (${error?.message || 'unknown error'})`, 'error')
   }
 }
 
@@ -937,6 +1147,13 @@ onBeforeUnmount(() => {
   resultModalInstance?.dispose()
   stopPolling()
 })
+
+watch(
+  () => route.query.datasetId,
+  () => {
+    hydrateQuerySelection()
+  }
+)
 </script>
 
 <style scoped>
@@ -1026,6 +1243,91 @@ onBeforeUnmount(() => {
 
 .dataset-select-item:hover {
   background: #f4f8ff;
+}
+
+.selected-dataset-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.selected-dataset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 34px;
+  max-width: 100%;
+  padding: 0.38rem 0.45rem 0.38rem 0.7rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 999px;
+  background: #f7faff;
+  color: #2a4166;
+}
+
+.selected-dataset-name {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.selected-dataset-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(42, 65, 102, 0.08);
+  color: #466287;
+}
+
+.selected-dataset-remove:hover {
+  background: rgba(42, 65, 102, 0.16);
+  color: #223854;
+}
+
+.save-path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+}
+
+.advanced-config-panel {
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.advanced-config-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #294268;
+}
+
+.advanced-config-toggle:hover {
+  background: #f4f8ff;
+}
+
+.advanced-config-body {
+  padding: 0 0.8rem 0.8rem;
+  border-top: 1px solid #e2ebf7;
+}
+
+.advanced-config-textarea {
+  font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.82rem;
 }
 
 .result-preview {

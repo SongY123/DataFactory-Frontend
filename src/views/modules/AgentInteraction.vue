@@ -1,6 +1,15 @@
 ﻿<template>
   <div class="interaction-shell h-100">
     <aside class="workspace-panel">
+      <div class="environment-panel">
+        <SandboxEnvironmentSelector
+          v-model="selectedSandboxEnvironmentId"
+          label="Environment"
+          description="Choose the server-side Python sandbox used for this chat."
+          :disabled="isBusy"
+        />
+      </div>
+
       <div class="panel-header">
         <div>
           <h6 class="mb-1">Data Assets</h6>
@@ -18,7 +27,6 @@
           </button>
         </div>
       </div>
-
 
       <input
         ref="fileInputRef"
@@ -547,11 +555,16 @@
 <script setup>
 import { Modal } from 'bootstrap'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import SandboxEnvironmentSelector from '../../components/SandboxEnvironmentSelector.vue'
 import {
   createAgentAssetFolder,
   deleteAgentAssetFile,
   deleteAgentAssetFolder,
+  fetchAgenticSynthesisTasks,
   fetchAgentAssetTree,
+  fetchDatasets,
+  fetchReasoningDistillationTasks,
   streamAgentInteractionChat,
   uploadAgentInteractionFile
 } from '../../api/dataAgent'
@@ -562,6 +575,8 @@ const MODEL_CONFIGS_STORAGE_KEY = 'datafactory.agentInteraction.modelConfigs.v1'
 const ACTIVE_MODEL_STORAGE_KEY = 'datafactory.agentInteraction.activeModelId.v1'
 const MAX_CONVERSATION_PAGES = 6
 const CONVERSATION_TITLE_LIMIT = 30
+const route = useRoute()
+const router = useRouter()
 
 const fileInputRef = ref(null)
 const composerRef = ref(null)
@@ -570,6 +585,17 @@ const modelConfigModalRef = ref(null)
 const modelPickerRef = ref(null)
 const conversationPickerRef = ref(null)
 const pendingFolderInputRef = ref(null)
+const selectedSandboxEnvironmentId = ref('')
+const hasInitializedSandboxEnvironment = ref(false)
+const platformDatasets = ref([])
+const platformTrajectoryTasks = ref([])
+const platformDistillationTasks = ref([])
+const attachedContextItems = ref([])
+const selectedPlatformRefs = ref({
+  dataset: '',
+  trajectoryTask: '',
+  distillationTask: ''
+})
 
 const assetTreeItems = ref([])
 const assetSummary = ref({ folder_count: 0, file_count: 0, total_size: 0 })
@@ -2030,6 +2056,98 @@ function syncReset(reason) {
   })
 }
 
+function mapPlatformDatasets(raw) {
+  const list = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
+  return list.map((item, index) => ({
+    id: Number(item?.id || index + 1),
+    name: String(item?.name || item?.dataset_name || `dataset-${index + 1}`)
+  }))
+}
+
+function mapPlatformTasks(raw, labelPrefix) {
+  const list = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
+  return list.map((item, index) => ({
+    id: Number(item?.id || index + 1),
+    label: `#${item?.id || index + 1} · ${String(item?.dataset_name || item?.dataset?.name || item?.datasetName || labelPrefix)}`
+  }))
+}
+
+async function refreshPlatformContextOptions() {
+  try {
+    const [datasetsResponse, trajectoryResponse, distillationResponse] = await Promise.all([
+      fetchDatasets(),
+      fetchAgenticSynthesisTasks(100),
+      fetchReasoningDistillationTasks(100)
+    ])
+    platformDatasets.value = mapPlatformDatasets(datasetsResponse)
+    platformTrajectoryTasks.value = mapPlatformTasks(trajectoryResponse, 'trajectory')
+    platformDistillationTasks.value = mapPlatformTasks(distillationResponse, 'distillation')
+    hydrateContextFromQuery()
+  } catch {
+    // ignore option refresh failures and keep chat usable
+  }
+}
+
+function contextLabelFor(type, refId, fallback = '') {
+  if (type === 'dataset') {
+    return platformDatasets.value.find((item) => Number(item.id) === Number(refId))?.name || fallback || `Dataset #${refId}`
+  }
+  if (type === 'trajectory_task') {
+    return platformTrajectoryTasks.value.find((item) => Number(item.id) === Number(refId))?.label || fallback || `Trajectory Task #${refId}`
+  }
+  if (type === 'distillation_task') {
+    return platformDistillationTasks.value.find((item) => Number(item.id) === Number(refId))?.label || fallback || `Distillation Task #${refId}`
+  }
+  return fallback || `${type} #${refId}`
+}
+
+function attachContextItem(type, refId, fallbackLabel = '') {
+  const normalizedId = Number(refId || 0)
+  if (!Number.isFinite(normalizedId) || normalizedId <= 0) return
+  const exists = attachedContextItems.value.some((item) => item.type === type && Number(item.refId) === normalizedId)
+  if (exists) return
+  attachedContextItems.value = [
+    ...attachedContextItems.value,
+    {
+      type,
+      refId: normalizedId,
+      label: contextLabelFor(type, normalizedId, fallbackLabel)
+    }
+  ]
+  syncReset('Attached platform context changed. A new agent session will start on the next prompt.')
+}
+
+function attachPlatformContext(type) {
+  if (type === 'dataset') {
+    attachContextItem('dataset', selectedPlatformRefs.value.dataset)
+    selectedPlatformRefs.value.dataset = ''
+    return
+  }
+  if (type === 'trajectory_task') {
+    attachContextItem('trajectory_task', selectedPlatformRefs.value.trajectoryTask)
+    selectedPlatformRefs.value.trajectoryTask = ''
+    return
+  }
+  if (type === 'distillation_task') {
+    attachContextItem('distillation_task', selectedPlatformRefs.value.distillationTask)
+    selectedPlatformRefs.value.distillationTask = ''
+  }
+}
+
+function removeAttachedContext(type, refId) {
+  attachedContextItems.value = attachedContextItems.value.filter((item) => !(item.type === type && Number(item.refId) === Number(refId)))
+  syncReset('Attached platform context changed. A new agent session will start on the next prompt.')
+}
+
+function hydrateContextFromQuery() {
+  const contextType = cleanString(route.query.contextType)
+  const contextId = Number(route.query.contextId || 0)
+  const contextLabel = cleanString(route.query.contextLabel)
+  if (contextType && Number.isFinite(contextId) && contextId > 0) {
+    attachContextItem(contextType, contextId, contextLabel)
+  }
+}
+
 async function onFilesChange(event) {
   const files = event?.target?.files ? Array.from(event.target.files) : []
   const targetFolderPath = pendingUploadFolderPath.value || currentTargetFolderPath.value
@@ -2090,7 +2208,8 @@ async function submitPrompt() {
         request_id: conversation.sessionId || undefined,
         selected_file_path: queuedFiles.length === 1 ? queuedFiles[0].path : undefined,
         selected_file_paths: queuedFiles.length ? queuedFiles.map((file) => file.path) : undefined,
-        model_config: buildSelectedModelPayload()
+        model_config: buildSelectedModelPayload(),
+        sandbox_environment_id: cleanString(selectedSandboxEnvironmentId.value) || undefined
       },
       {
         signal: streamController.signal,
@@ -2180,6 +2299,23 @@ watch(
     }
   }
 )
+
+watch(
+  selectedSandboxEnvironmentId,
+  (nextValue, previousValue) => {
+    const nextId = cleanString(nextValue)
+    const prevId = cleanString(previousValue)
+    if (!hasInitializedSandboxEnvironment.value) {
+      if (nextId) {
+        hasInitializedSandboxEnvironment.value = true
+      }
+      return
+    }
+    if (!nextId || nextId === prevId) return
+    syncReset('Environment changed. A new agent session will start on the next prompt.')
+  }
+)
+
 </script>
 
 <style scoped>
@@ -2201,6 +2337,12 @@ watch(
   overflow: hidden;
 }
 
+.environment-panel {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fcfcfd;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -2208,6 +2350,65 @@ watch(
   padding: 1rem 1rem 0.85rem;
   border-bottom: 1px solid #e5e7eb;
   background: #f9fafb;
+}
+
+.platform-context-panel {
+  border-bottom: 1px solid #e5e7eb;
+  background: #fcfcfd;
+}
+
+:global(.modal) {
+  z-index: 1400;
+}
+
+:global(.modal-backdrop) {
+  z-index: 1390;
+}
+
+.platform-context-header {
+  padding: 0.75rem 1rem 0.25rem;
+}
+
+.platform-context-body {
+  padding: 0.25rem 1rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.platform-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+}
+
+.attached-context-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+}
+
+.attached-context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid #dbe2ea;
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.35rem 0.55rem 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  color: #334155;
+}
+
+.attached-context-remove {
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .panel-header h6 {
@@ -3545,7 +3746,3 @@ watch(
   }
 }
 </style>
-
-
-
-

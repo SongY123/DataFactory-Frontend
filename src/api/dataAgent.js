@@ -39,6 +39,13 @@ const request = async (path, options = {}) => {
 
 export const fetchDatasets = () => request('/datasets')
 
+export const searchDatasets = (payload = {}) =>
+  request('/datasets/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  })
+
 export const fetchCurrentSession = () => request('/auth/session')
 
 export const createDataset = (payload) =>
@@ -50,10 +57,36 @@ export const createDataset = (payload) =>
 
 export const fetchDatasetDetail = (datasetId) => request(`/datasets/${datasetId}`)
 
+export const fetchDatasetReadme = (datasetId) => request(`/datasets/${datasetId}/readme`)
+
+export const fetchDatasetFiles = (datasetId) => request(`/datasets/${datasetId}/files`)
+
+export const fetchDatasetPreview = (datasetId, params = {}) => {
+  const query = new URLSearchParams()
+  if (params.path) query.set('path', params.path)
+  if (params.limit) query.set('limit', String(params.limit))
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/datasets/${datasetId}/preview${suffix}`)
+}
+
+export const queryDatasetSql = (datasetId, payload) =>
+  request(`/datasets/${datasetId}/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
 export const uploadDataset = (formData) =>
   request('/datasets/upload', {
     method: 'POST',
     body: formData
+  })
+
+export const importHuggingFaceDataset = (payload) =>
+  request('/datasets/import/huggingface', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
   })
 
 export const updateDataset = (datasetId, payload) =>
@@ -101,6 +134,20 @@ export const postAgentMessage = (payload) =>
 
 export const fetchAgentAssetTree = () => request('/assets/tree')
 
+export const fetchSandboxEnvironments = () => request('/sandbox-environments')
+
+export const createSandboxEnvironment = (payload) =>
+  request('/sandbox-environments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+export const deleteSandboxEnvironment = (environmentId) =>
+  request(`/sandbox-environments/${encodeURIComponent(environmentId)}`, {
+    method: 'DELETE'
+  })
+
 export const createAgentAssetFolder = (payload) =>
   request('/folders', {
     method: 'POST',
@@ -127,6 +174,13 @@ export const uploadAgentInteractionFile = (file, folderPath = '') => {
     body: formData
   })
 }
+
+export const importPlatformAsset = (payload) =>
+  request('/assets/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
 
 export const streamAgentInteractionChat = async (
   payload,
@@ -214,3 +268,28 @@ export const createAgenticSynthesisTask = (payload) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
+
+export const fetchAgenticSynthesisOutputPathOptions = () =>
+  request('/agentic-synthesis/output-path-options')
+
+export const fetchReasoningDistillationTasks = (limit = 20) =>
+  request(`/reasoning-distillation/tasks?limit=${encodeURIComponent(limit)}`)
+
+export const fetchReasoningDistillationTask = (taskId) =>
+  request(`/reasoning-distillation/tasks/${encodeURIComponent(taskId)}`)
+
+export const fetchReasoningDistillationTaskResults = (taskId, limit = 200) =>
+  request(`/reasoning-distillation/tasks/${encodeURIComponent(taskId)}/results?limit=${encodeURIComponent(limit)}`)
+
+export const fetchReasoningDistillationResult = (resultId) =>
+  request(`/reasoning-distillation/results/${encodeURIComponent(resultId)}`)
+
+export const createReasoningDistillationTask = (payload) =>
+  request('/reasoning-distillation/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+export const fetchReasoningDistillationOutputPathOptions = () =>
+  request('/reasoning-distillation/output-path-options')

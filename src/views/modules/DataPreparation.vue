@@ -1,312 +1,385 @@
 <template>
-  <div class="module-page">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-      <div>
-        <h4 class="mb-1">Data Preparation</h4>
-        <p class="text-muted mb-0">Upload datasets, view uploaded list, and inspect sample data.</p>
-      </div>
-    </div>
-
-    <div v-if="notice" class="alert alert-warning py-2 px-3" role="alert">
+  <div class="dataset-page">
+    <div v-if="notice" class="alert alert-warning py-2 px-3 mb-3" role="alert">
       {{ notice }}
     </div>
 
-    <article class="card border-0 shadow-sm mb-3">
-      <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <section class="hero-card">
+      <div class="hero-main">
         <div>
-          <h6 class="card-title mb-1">Dataset Upload</h6>
-          <p class="text-muted small mb-0">Click to open upload form in a modal. Current user: {{ currentUsername || 'unknown' }}</p>
-        </div>
-        <button class="btn btn-primary" type="button" @click="openUploadModal">
-          Upload
-        </button>
-      </div>
-    </article>
-
-    <article class="card border-0 shadow-sm mb-3">
-      <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h6 class="card-title mb-0">Uploaded Datasets</h6>
-          <div class="d-flex align-items-center gap-2">
-            <div class="view-mode-toggle" role="group" aria-label="Dataset view mode">
-              <button
-                class="view-mode-button"
-                :class="{ active: viewMode === 'list' }"
-                type="button"
-                @click="setViewMode('list')"
-              >
-                <span class="view-mode-icon list" aria-hidden="true">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </span>
-                <span>List</span>
-              </button>
-              <button
-                class="view-mode-button"
-                :class="{ active: viewMode === 'card' }"
-                type="button"
-                @click="setViewMode('card')"
-              >
-                <span class="view-mode-icon card" aria-hidden="true">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </span>
-                <span>Card</span>
-              </button>
-            </div>
-            <span class="badge text-bg-light">{{ datasetRows.length }} datasets</span>
-          </div>
+          <h2 class="hero-title mb-1">Datasets</h2>
+          <p class="hero-copy mb-0">
+            Manage datasets for downstream data synthesis.
+          </p>
         </div>
 
-        <div v-if="viewMode === 'list'" class="table-responsive">
-          <table class="table table-hover align-middle mb-0">
-            <thead class="table-light">
-            <tr>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Language</th>
-              <th>Size</th>
-              <th>Status</th>
-              <th>Updated At</th>
-              <th style="width: 300px;">Actions</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr
-              v-for="row in datasetRows"
-              :key="row.id"
-              class="dataset-row"
-              
-            >
-              <td>{{ row.name }}</td>
-              <td>{{ row.type }}</td>
-              <td>{{ row.language }}</td>
-              <td>{{ formatSize(row.size) }}</td>
-              <td>
-                <span class="badge" :class="statusClass(row.status)">{{ row.status }}</span>
-              </td>
-              <td>{{ row.updatedAt }}</td>
-              <td>
-                <div class="d-flex gap-2 flex-wrap">
-                  <button class="btn btn-primary btn-sm" type="button" @click.stop="goToDatasetDetail(row.id)">Details</button>
-                  <button class="btn btn-outline-secondary btn-sm" type="button" @click.stop="openSampleDetail(row)">Sample Detail</button>
-                  <button class="btn btn-outline-primary btn-sm" type="button" @click.stop="startEditDataset(row)">Edit</button>
-                  <button class="btn btn-outline-danger btn-sm" type="button" @click.stop="removeDataset(row)">Delete</button>
-                </div>
-              </td>
-            </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div v-else class="row g-3">
-          <div v-for="row in datasetRows" :key="`card-${row.id}`" class="col-12 col-md-6 col-xl-4">
-            <article
-              class="card h-100 dataset-card"
-              
-            >
-              <img
-                v-if="row.cover"
-                :src="row.cover"
-                class="card-img-top dataset-cover"
-                :alt="`${row.name} cover`"
-              >
-              <div v-else class="dataset-cover-placeholder">No Cover</div>
-              <div class="card-body">
-                <h6 class="card-title mb-1">{{ row.name }}</h6>
-                <p class="small text-muted mb-2">{{ row.type }} | {{ row.language }}</p>
-                <div class="d-flex align-items-center justify-content-between small mb-2">
-                  <span>{{ formatSize(row.size) }}</span>
-                  <span class="badge" :class="statusClass(row.status)">{{ row.status }}</span>
-                </div>
-                <div class="d-flex gap-2 flex-wrap">
-                  <button class="btn btn-primary btn-sm" type="button" @click.stop="goToDatasetDetail(row.id)">Details</button>
-                  <button class="btn btn-outline-secondary btn-sm" type="button" @click.stop="openSampleDetail(row)">Sample Detail</button>
-                  <button class="btn btn-outline-primary btn-sm" type="button" @click.stop="startEditDataset(row)">Edit</button>
-                  <button class="btn btn-outline-danger btn-sm" type="button" @click.stop="removeDataset(row)">Delete</button>
-                </div>
-              </div>
-              <div class="card-footer bg-transparent border-0 pt-0 small text-muted">
-                Updated: {{ row.updatedAt }}
-              </div>
-            </article>
-          </div>
+        <div class="hero-meta-strip">
+          <span class="hero-meta-pill">{{ filteredRows.length }} shown</span>
+          <span class="hero-meta-pill">{{ totalDatasetCount }} total</span>
+          <span v-if="importingCount" class="hero-meta-pill accent">{{ importingCount }} importing</span>
+          <span v-if="generatedCount" class="hero-meta-pill">{{ generatedCount }} generated</span>
         </div>
       </div>
-    </article>
 
-    <article v-if="editingDatasetId !== null" class="card border-0 shadow-sm mb-3">
-      <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-          <h6 class="card-title mb-0">Edit Dataset</h6>
-          <span class="badge text-bg-light">ID {{ editingDatasetId }}</span>
+      <button class="btn btn-primary hero-add-btn" type="button" @click="openImportModal">
+        Add
+      </button>
+    </section>
+
+    <section class="toolbar-card">
+      <form class="toolbar-top" @submit.prevent="applySearch">
+        <label class="search-box">
+          <i class="bi bi-search"></i>
+          <input
+            v-model.trim="pendingSearchKeyword"
+            type="text"
+            class="form-control"
+            placeholder="Search by dataset name"
+            @keydown.enter.prevent="applySearch"
+          >
+        </label>
+
+        <div class="toolbar-actions">
+          <span class="toolbar-hint">{{ activeFilterCount }} active filters</span>
+          <button class="btn btn-primary toolbar-search" type="submit">
+            Search
+          </button>
+          <button class="btn btn-outline-secondary toolbar-clear" type="button" @click="clearFilters">
+            Clear Filters
+          </button>
+          <button class="btn btn-outline-primary toolbar-toggle" type="button" @click="toggleFiltersCollapsed">
+            <i class="bi" :class="isFiltersCollapsed ? 'bi-chevron-down' : 'bi-chevron-up'"></i>
+            <span>{{ isFiltersCollapsed ? 'Show Filters' : 'Hide Filters' }}</span>
+          </button>
         </div>
+      </form>
 
-        <form class="row g-2" @submit.prevent="saveDatasetEdit">
-          <div class="col-12 col-md-6">
-            <input v-model.trim="editForm.name" type="text" class="form-control" placeholder="Dataset name" required>
-          </div>
-          <div class="col-6 col-md-3">
-            <select v-model="editForm.type" class="form-select" required>
-              <option value="instruction">Instruction</option>
-              <option value="conversation">Conversation</option>
-              <option value="evaluation">Evaluation</option>
-              <option value="tool-trace">Tool Trace</option>
-            </select>
-          </div>
-          <div class="col-6 col-md-3">
-            <select v-model="editForm.language" class="form-select" required>
-              <option value="zh">Chinese</option>
-              <option value="en">English</option>
-              <option value="multi">Multilingual</option>
-            </select>
-          </div>
-          <div class="col-12">
-            <input v-model.trim="editForm.source" type="text" class="form-control" placeholder="Source URI (optional)">
-          </div>
-          <div class="col-12">
-            <textarea
-              v-model.trim="editForm.note"
-              class="form-control"
-              rows="2"
-              placeholder="Description / labeling protocol / source constraints"
-            ></textarea>
-          </div>
-          <div class="col-12 col-md-8">
-            <input class="form-control" type="file" accept="image/*" @change="onEditCoverChange" ref="editCoverInputRef">
-            <div class="small text-muted mt-1">New cover: {{ editCoverLabel }}</div>
-          </div>
-          <div class="col-12 col-md-4 d-flex align-items-end justify-content-md-end gap-2">
-            <button class="btn btn-outline-secondary" type="button" @click="cancelEdit">Cancel</button>
-            <button class="btn btn-primary" type="submit" :disabled="isSavingEdit">
-              <span v-if="isSavingEdit" class="spinner-border spinner-border-sm me-1" role="status"></span>
-              Save
+      <div v-show="!isFiltersCollapsed" class="filter-groups">
+        <div class="filter-group">
+          <span class="filter-label">Format</span>
+          <div class="filter-chip-list">
+            <button
+              v-for="tag in formatOptions"
+              :key="`format-${tag}`"
+              class="filter-chip"
+              :class="{ active: selectedFormats.includes(tag) }"
+              type="button"
+              @click="toggleFilterSelection('formats', tag)"
+            >
+              {{ tag }}
             </button>
           </div>
-        </form>
-      </div>
-    </article>
+        </div>
 
-    <div class="modal fade" tabindex="-1" ref="uploadModalRef" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h6 class="modal-title mb-0">Dataset Upload</h6>
-            <button type="button" class="btn-close" @click="closeUploadModal"></button>
+        <div class="filter-group">
+          <span class="filter-label">Language</span>
+          <div class="filter-chip-list">
+            <button
+              v-for="tag in languageOptions"
+              :key="`language-${tag}`"
+              class="filter-chip"
+              :class="{ active: selectedLanguages.includes(tag) }"
+              type="button"
+              @click="toggleFilterSelection('languages', tag)"
+            >
+              {{ tag }}
+            </button>
           </div>
-          <div class="modal-body">
-            <form class="d-flex flex-column gap-2" @submit.prevent="submitDataset">
-              <input v-model.trim="datasetForm.name" type="text" class="form-control" placeholder="Dataset name" required>
+        </div>
 
-              <select v-model="datasetForm.type" class="form-select" required>
-                <option value="instruction">Instruction</option>
-                <option value="conversation">Conversation</option>
-                <option value="evaluation">Evaluation</option>
-                <option value="tool-trace">Tool Trace</option>
-              </select>
+        <div class="filter-group">
+          <span class="filter-label">Size</span>
+          <div class="filter-chip-list">
+            <button
+              v-for="item in sizeFilterOptions"
+              :key="item.value"
+              class="filter-chip"
+              :class="{ active: selectedSizeLevels.includes(item.value) }"
+              type="button"
+              @click="toggleFilterSelection('sizes', item.value)"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+        </div>
 
-              <input v-model.trim="datasetForm.source" type="text" class="form-control" placeholder="Source URI (optional)">
+        <div class="filter-group">
+          <span class="filter-label">Status</span>
+          <div class="filter-chip-list">
+            <button
+              v-for="status in statusOptions"
+              :key="`status-${status}`"
+              class="filter-chip"
+              :class="{ active: selectedStatuses.includes(status) }"
+              type="button"
+              @click="toggleFilterSelection('statuses', status)"
+            >
+              {{ formatStatusLabel(status) }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
 
-              <div class="row g-3">
-                <div class="col-12 col-md-6">
-                  <div class="upload-picker h-100">
-                    <select v-model="datasetForm.language" class="form-select">
-                      <option value="zh">Chinese</option>
-                      <option value="en">English</option>
-                      <option value="multi">Multilingual</option>
-                    </select>
-                    <input
-                      class="d-none"
-                      type="file"
-                      accept=".csv,.json,.jsonl,.txt,.zip"
-                      multiple
-                      webkitdirectory
-                      directory
-                      @change="onDatasetFilesChange"
-                      ref="datasetFilesInputRef"
-                    >
-                    <button class="upload-picker-button" type="button" @click="triggerDatasetFolderPicker">
-                      <i class="bi bi-folder2-open" aria-hidden="true"></i>
-                      <span>Dataset folder</span>
-                    </button>
-                    <div class="upload-picker-status">{{ selectedFolderLabel }}</div>
-                    <div class="upload-picker-hint">Select the folder that contains your dataset files.</div>
-                  </div>
+    <section class="dataset-section">
+      <div class="section-head">
+      </div>
+
+      <div v-if="isLoading" class="loading-card">
+        <span class="spinner-border spinner-border-sm" role="status"></span>
+        <span>Loading datasets...</span>
+      </div>
+
+      <div v-else-if="filteredRows.length === 0" class="empty-card">
+        <h6 class="mb-2">No datasets match the current filters</h6>
+        <p class="text-muted mb-0">Try another dataset name, adjust the active filters, or add a new dataset.</p>
+      </div>
+
+      <div v-else class="dataset-grid">
+        <article
+          v-for="row in filteredRows"
+          :key="row.id"
+          class="dataset-card"
+          @click="goToDatasetDetail(row.id)"
+        >
+          <div class="dataset-card-media">
+            <img
+              v-if="row.cover"
+              :src="row.cover"
+              :alt="`${row.name} cover`"
+              class="dataset-cover"
+            >
+            <div v-else class="dataset-cover-fallback">
+              <div class="dataset-cover-name">{{ row.name }}</div>
+<!--              <div class="dataset-cover-meta">{{ row.typeLabel }} · {{ row.languageLabel }}</div>-->
+            </div>
+          </div>
+
+          <div class="dataset-card-body">
+            <div class="dataset-card-top">
+              <div class="dataset-badges">
+                <span v-if="row.sourceKind !== 'upload'" class="dataset-source">{{ sourceKindLabel(row.sourceKind) }}</span>
+                <span class="dataset-badge-muted">#{{ row.id }}</span>
+                <span class="status-pill" :class="statusClass(row.status)">{{ formatStatusLabel(row.status) }}</span>
+              </div>
+
+              <details class="action-menu" @click.stop>
+                <summary class="dataset-more-btn" aria-label="Quick actions">
+                  <i class="bi bi-three-dots"></i>
+                </summary>
+                <div class="action-menu-panel">
+                  <button class="action-item" type="button" :disabled="row.isImporting" @click.stop="useInDistillation(row)">Reasoning Synthesis</button>
+                  <button class="action-item" type="button" :disabled="row.isImporting" @click.stop="useInTrajectory(row)">Trajectory Synthesis</button>
                 </div>
-                <div class="col-12 col-md-6">
-                  <div class="upload-picker h-100">
-                    <input
-                      class="d-none"
-                      type="file"
-                      accept="image/*"
-                      @change="onCoverFileChange"
-                      ref="coverFileInputRef"
-                    >
-                    <button class="upload-picker-button" type="button" @click="triggerCoverFilePicker">
-                      <i class="bi bi-image" aria-hidden="true"></i>
-                      <span>Cover image</span>
-                    </button>
-                    <div class="upload-picker-status">{{ selectedCoverLabel }}</div>
-                    <div class="upload-picker-hint">Optional. Add one preview image for this dataset.</div>
-                  </div>
+              </details>
+            </div>
+
+            <div>
+              <h5 class="dataset-name">{{ row.name }}</h5>
+              <p class="dataset-summary">
+                {{ row.note || row.readmeExcerpt || 'No dataset description yet.' }}
+              </p>
+            </div>
+
+            <div v-if="row.isImporting" class="progress-block">
+              <div class="progress-copy">
+                <span>Downloading HuggingFace dataset</span>
+                <span>{{ row.importProgress }}%</span>
+              </div>
+              <div class="progress">
+                <div class="progress-bar" role="progressbar" :style="{ width: `${row.importProgress}%` }"></div>
+              </div>
+              <div class="progress-meta">
+                <span>{{ row.importDownloadedFiles }} / {{ row.importTotalFiles || '?' }} files</span>
+                <span v-if="row.importErrorMessage" class="text-danger">{{ row.importErrorMessage }}</span>
+              </div>
+            </div>
+
+            <div class="tag-groups">
+              <div v-if="cardTags(row).length" class="tag-list compact">
+                <span v-for="tag in cardTags(row)" :key="`${row.id}-tag-${tag}`" class="tag-chip">{{ tag }}</span>
+                <span v-if="extraTagCount(row) > 0" class="tag-chip muted">+{{ extraTagCount(row) }}</span>
+              </div>
+            </div>
+
+            <div class="dataset-card-footer">
+              <div class="footer-copy">
+                <span>{{ preciseDateTime(row.insertAt || row.updatedAt) }}</span>
+                <span v-if="row.isGenerated">{{ originSummary(row) }}</span>
+              </div>
+              <span class="footer-size">{{ formatSize(row.size) }}</span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <div class="modal fade" tabindex="-1" ref="importModalRef" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content import-modal">
+          <div class="modal-header border-0 pb-0">
+            <div>
+              <h5 class="modal-title mb-1">Add Dataset</h5>
+              <p class="text-muted mb-0 small">Choose a local folder or import a public dataset from HuggingFace.</p>
+            </div>
+            <button type="button" class="btn-close" @click="closeImportModal"></button>
+          </div>
+          <div class="modal-body pt-3">
+            <div class="import-mode-switch">
+              <button
+                class="mode-pill"
+                :class="{ active: importMode === 'upload' }"
+                type="button"
+                @click="importMode = 'upload'"
+              >
+                Local Upload
+              </button>
+              <button
+                class="mode-pill"
+                :class="{ active: importMode === 'huggingface' }"
+                type="button"
+                @click="importMode = 'huggingface'"
+              >
+                HuggingFace
+              </button>
+            </div>
+
+            <form v-if="importMode === 'upload'" class="d-flex flex-column gap-3" @submit.prevent="submitLocalUpload">
+              <div class="row g-3">
+                <div class="col-12 col-md-7">
+                  <label class="form-label">Dataset Name</label>
+                  <input v-model.trim="datasetForm.name" type="text" class="form-control" placeholder="Dataset name" required>
+                </div>
+                <div class="col-6 col-md-3">
+                  <label class="form-label">Type</label>
+                  <select v-model="datasetForm.type" class="form-select">
+                    <option value="instruction">Instruction</option>
+                    <option value="conversation">Conversation</option>
+                    <option value="evaluation">Evaluation</option>
+                    <option value="tool-trace">Tool Trace</option>
+                  </select>
+                </div>
+                <div class="col-6 col-md-2">
+                  <label class="form-label">Language</label>
+                  <select v-model="datasetForm.language" class="form-select">
+                    <option value="zh">ZH</option>
+                    <option value="en">EN</option>
+                    <option value="multi">Multi</option>
+                  </select>
                 </div>
               </div>
 
-              <textarea
-                v-model.trim="datasetForm.note"
-                class="form-control"
-                rows="3"
-                placeholder="Description / labeling protocol / source constraints"
-              ></textarea>
+              <div>
+                <label class="form-label">Source</label>
+                <input v-model.trim="datasetForm.source" type="text" class="form-control" placeholder="Optional source URL or note">
+              </div>
+
+              <div class="upload-grid">
+                <div class="upload-panel">
+                  <div class="upload-panel-head">
+                    <span class="upload-panel-title">Dataset Folder</span>
+                    <span class="upload-panel-copy">Keep the full directory structure.</span>
+                  </div>
+                  <input
+                    ref="datasetFilesInputRef"
+                    class="d-none"
+                    type="file"
+                    accept=".csv,.tsv,.json,.jsonl,.txt,.md,.xlsx,.xls,.parquet"
+                    multiple
+                    webkitdirectory
+                    directory
+                    @change="onDatasetFilesChange"
+                  >
+                  <button class="btn btn-outline-dark" type="button" @click="triggerDatasetFolderPicker">
+                    Select Folder
+                  </button>
+                  <div class="upload-status">{{ selectedFolderLabel }}</div>
+                </div>
+
+                <div class="upload-panel">
+                  <div class="upload-panel-head">
+                    <span class="upload-panel-title">Cover Image</span>
+                    <span class="upload-panel-copy">Optional card cover.</span>
+                  </div>
+                  <input
+                    ref="coverFileInputRef"
+                    class="d-none"
+                    type="file"
+                    accept="image/*"
+                    @change="onCoverFileChange"
+                  >
+                  <button class="btn btn-outline-dark" type="button" @click="triggerCoverFilePicker">
+                    Select Cover
+                  </button>
+                  <div class="upload-status">{{ selectedCoverLabel }}</div>
+                </div>
+              </div>
+
+              <div>
+                <label class="form-label">Description</label>
+                <textarea
+                  v-model.trim="datasetForm.note"
+                  class="form-control"
+                  rows="4"
+                  placeholder="Dataset summary, annotation rules, or anything consumers should know"
+                ></textarea>
+              </div>
 
               <div class="d-flex justify-content-end gap-2">
-                <button class="btn btn-outline-secondary" type="button" @click="closeUploadModal">Cancel</button>
-                <button class="btn btn-primary" type="submit" :disabled="isSubmitting">
-                  <span v-if="isSubmitting" class="spinner-border spinner-border-sm me-1" role="status"></span>
+                <button class="btn btn-outline-secondary" type="button" @click="closeImportModal">Cancel</button>
+                <button class="btn btn-primary" type="submit" :disabled="isSubmittingUpload">
+                  <span v-if="isSubmittingUpload" class="spinner-border spinner-border-sm me-1" role="status"></span>
                   Upload
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <div class="modal fade" tabindex="-1" ref="sampleModalRef" aria-hidden="true">
-      <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h6 class="modal-title mb-0">Sample Data - {{ sampleDetailDatasetName || 'Dataset' }}</h6>
-            <button type="button" class="btn-close" @click="closeSampleModal"></button>
-          </div>
-          <div class="modal-body">
-            <div v-if="isLoadingSampleDetail" class="d-flex align-items-center gap-2 text-muted">
-              <span class="spinner-border spinner-border-sm" role="status"></span>
-              <span>Loading sample data...</span>
-            </div>
-            <div v-else-if="sampleDetailRows.length === 0" class="text-muted small">No sample data.</div>
-            <div v-else class="table-responsive">
-              <table class="table table-sm table-bordered align-middle mb-0">
-                <thead class="table-light">
-                <tr>
-                  <th style="width: 50px;">#</th>
-                  <th>Content</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr v-for="(sample, index) in sampleDetailRows" :key="index">
-                  <td>{{ index + 1 }}</td>
-                  <td><pre class="sample-pre">{{ stringifySample(sample) }}</pre></td>
-                </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-outline-secondary" type="button" @click="closeSampleModal">Close</button>
+            <form v-else class="d-flex flex-column gap-3" @submit.prevent="submitHuggingFaceImport">
+              <div>
+                <label class="form-label">Dataset Name on HuggingFace</label>
+                <input
+                  v-model.trim="huggingFaceForm.repoId"
+                  type="text"
+                  class="form-control"
+                  placeholder="for example: ag_news or Open-Orca/OpenOrca"
+                  required
+                >
+              </div>
+
+              <div class="row g-3">
+                <div class="col-12 col-md-7">
+                  <label class="form-label">Display Name</label>
+                  <input v-model.trim="huggingFaceForm.name" type="text" class="form-control" placeholder="Optional custom name">
+                </div>
+                <div class="col-12 col-md-5">
+                  <label class="form-label">Revision</label>
+                  <input v-model.trim="huggingFaceForm.revision" type="text" class="form-control" placeholder="main">
+                </div>
+              </div>
+
+              <div>
+                <label class="form-label">Description Override</label>
+                <textarea
+                  v-model.trim="huggingFaceForm.note"
+                  class="form-control"
+                  rows="4"
+                  placeholder="Optional local note. If empty, the dataset card metadata will be used."
+                ></textarea>
+              </div>
+
+              <div class="hf-hint">
+                The dataset record will appear immediately after submission. README and metadata can show up while the
+                files continue downloading, and the file explorer will unlock after the download finishes.
+              </div>
+
+              <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-outline-secondary" type="button" @click="closeImportModal">Cancel</button>
+                <button class="btn btn-primary" type="submit" :disabled="isSubmittingHuggingFace">
+                  <span v-if="isSubmittingHuggingFace" class="spinner-border spinner-border-sm me-1" role="status"></span>
+                  Start Import
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
@@ -319,539 +392,1152 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
 import {
-  deleteDataset,
-  fetchDatasetDetail,
-  fetchDatasets,
   fetchCurrentSession,
-  updateDataset,
-  updateDatasetCover,
+  importHuggingFaceDataset,
+  searchDatasets,
   uploadDataset
 } from '../../api/dataAgent'
-import { getStoredUsername, isLoggedIn } from '../../api/auth'
+import { getStoredUsername } from '../../api/auth'
 
-const isLoading = ref(false)
-const isSubmitting = ref(false)
-const isSavingEdit = ref(false)
-const isLoadingSampleDetail = ref(false)
-const notice = ref('')
 const router = useRouter()
-const currentUsername = ref(getStoredUsername())
-const currentUserId = ref(null)
 
-const sampleDetailRows = ref([])
-const sampleDetailDatasetName = ref('')
+const notice = ref('')
+const isLoading = ref(false)
+const isSubmittingUpload = ref(false)
+const isSubmittingHuggingFace = ref(false)
+const currentUsername = ref(getStoredUsername())
+const rawDatasets = ref([])
+const totalDatasetCount = ref(0)
+const importingCount = ref(0)
+const generatedCount = ref(0)
+const pendingSearchKeyword = ref('')
+const appliedSearchKeyword = ref('')
+const selectedFormats = ref([])
+const selectedLanguages = ref([])
+const selectedSizeLevels = ref([])
+const selectedStatuses = ref([])
+const appliedFormats = ref([])
+const appliedLanguages = ref([])
+const appliedSizeLevels = ref([])
+const appliedStatuses = ref([])
 const selectedDatasetFiles = ref([])
 const selectedCoverFile = ref(null)
-const editCoverFile = ref(null)
+const importMode = ref('upload')
+const isFiltersCollapsed = ref(true)
+
+const importModalRef = ref(null)
 const datasetFilesInputRef = ref(null)
 const coverFileInputRef = ref(null)
-const editCoverInputRef = ref(null)
-const uploadModalRef = ref(null)
-const sampleModalRef = ref(null)
-const viewMode = ref('card')
-let uploadModalInstance = null
-let sampleModalInstance = null
-
-const datasetRows = ref([])
-const editingDatasetId = ref(null)
-const editForm = ref({
-  name: '',
-  type: 'instruction',
-  source: '',
-  language: 'zh',
-  note: ''
-})
+let importModalInstance = null
+let pollingTimer = null
 
 const datasetForm = ref({
   name: '',
   type: 'instruction',
+  language: 'multi',
   source: '',
-  language: 'zh',
   note: ''
 })
 
-const statusClass = (status) => {
-  if (status === 'ready') return 'bg-success-subtle text-success-emphasis'
-  if (status === 'reviewing') return 'bg-warning-subtle text-warning-emphasis'
-  if (status === 'draft') return 'bg-secondary-subtle text-secondary-emphasis'
-  if (status === 'uploaded') return 'bg-primary-subtle text-primary-emphasis'
-  return 'bg-light text-dark'
+const huggingFaceForm = ref({
+  repoId: '',
+  revision: '',
+  name: '',
+  note: ''
+})
+
+const typeLabels = {
+  instruction: 'Instruction',
+  conversation: 'Conversation',
+  evaluation: 'Evaluation',
+  'tool-trace': 'Tool Trace',
+  trajectory: 'Trajectory',
+  reasoning: 'Reasoning'
+}
+
+const languageLabels = {
+  zh: 'Chinese',
+  en: 'English',
+  multi: 'Multilingual'
+}
+
+const statusOrder = {
+  downloading: 0,
+  uploaded: 1,
+  failed: 2
+}
+
+const sizeFilterOptions = [
+  { value: 'kb', label: 'KB' },
+  { value: 'mb', label: 'MB' },
+  { value: 'gb', label: 'GB' }
+]
+
+const formatFilterPresets = ['csv', 'xlsx', 'xls', 'excel', 'tsv', 'json', 'jsonl', 'parquet', 'text', 'sqlite']
+const languageFilterPresets = ['zh', 'en', 'multi']
+const statusFilterPresets = ['uploaded', 'downloading', 'failed']
+
+const normalizeDatasetStatus = (status) => {
+  const normalized = String(status || 'uploaded').toLowerCase()
+  if (normalized === 'ready') return 'uploaded'
+  return normalized
 }
 
 const formatSize = (size) => {
-  const n = Number(size || 0)
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`
+  const value = Number(size || 0)
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(2)} MB`
+  return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-const stringifySample = (sample) => JSON.stringify(sample, null, 2)
-
-const mapDatasets = (raw) => {
-  const list = Array.isArray(raw?.data)
-    ? raw.data
-    : Array.isArray(raw?.items)
-      ? raw.items
-      : Array.isArray(raw)
-        ? raw
-        : []
-
-  return list
-    .filter((item) => item && typeof item === 'object')
-    .map((item, index) => ({
-      id: Number(item.id || item.dataset_id || index + 1),
-      name: String(item.name || item.dataset_name || 'unknown'),
-      type: String(item.type || item.dataset_type || 'instruction'),
-      language: String(item.language || item.lang || 'multi'),
-      size: Number(item.size || item.sample_count || 0),
-      status: String(item.status || 'draft'),
-      source: String(item.source || ''),
-      note: String(item.note || ''),
-      cover: String(item.cover_url || item.cover || item.cover_path || item.thumbnail || ''),
-      updatedAt: String(item.update_time || item.updated_at || '-')
-    }))
+const sourceKindLabel = (sourceKind) => {
+  if (sourceKind === 'huggingface') return 'HuggingFace'
+  if (sourceKind === 'generated') return 'Generated'
+  return 'Uploaded'
 }
 
-const extractFolderNameFromFiles = (fileList = []) => {
-  if (!Array.isArray(fileList) || fileList.length === 0) return ''
-  const firstPath = String(fileList[0]?.webkitRelativePath || fileList[0]?.name || '')
-  if (!firstPath) return ''
-  const normalized = firstPath.replaceAll('\\', '/')
-  const firstSegment = normalized.split('/')[0] || ''
-  if (!firstSegment || firstSegment === normalized) return ''
-  return firstSegment.trim()
+const statusClass = (status) => {
+  const normalized = normalizeDatasetStatus(status)
+  if (normalized === 'downloading') return 'is-downloading'
+  if (normalized === 'failed') return 'is-failed'
+  if (normalized === 'uploaded') return 'is-uploaded'
+  return ''
 }
 
-const onDatasetFilesChange = (event) => {
-  const files = event?.target?.files
-  selectedDatasetFiles.value = files ? Array.from(files) : []
+const formatStatusLabel = (status) => {
+  const normalized = normalizeDatasetStatus(status)
+  if (normalized === 'uploaded') return 'Uploaded'
+  if (normalized === 'downloading') return 'Downloading'
+  if (normalized === 'failed') return 'Failed'
+  return String(normalized || '').replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+}
 
-  const folderName = extractFolderNameFromFiles(selectedDatasetFiles.value)
-  if (folderName) {
-    datasetForm.value.name = folderName
+const originSummary = (row) => {
+  const parts = []
+  if (row.originStage) parts.push(`Generated by ${row.originStage}`)
+  if (row.originDatasetId) parts.push(`source #${row.originDatasetId}`)
+  if (row.originTaskType && row.originTaskId) parts.push(`${row.originTaskType} #${row.originTaskId}`)
+  return parts.join(' · ')
+}
+
+const normalizeDataset = (item = {}, index = 0) => {
+  const modalityTags = Array.isArray(item.modality_tags) ? item.modality_tags : []
+  const formatTags = Array.isArray(item.format_tags) ? item.format_tags : []
+  const languageTags = Array.isArray(item.language_tags) ? item.language_tags : []
+  const rawStatus = String(item.status || 'uploaded').toLowerCase()
+  const status = normalizeDatasetStatus(rawStatus)
+  return {
+    id: Number(item.id || item.dataset_id || index + 1),
+    name: String(item.name || item.dataset_name || 'Unnamed Dataset'),
+    type: String(item.type || 'instruction'),
+    typeLabel: typeLabels[String(item.type || 'instruction')] || String(item.type || 'instruction'),
+    language: String(item.language || 'multi'),
+    languageLabel: languageLabels[String(item.language || 'multi')] || String(item.language || 'multi'),
+    size: Number(item.size || 0),
+    status,
+    note: String(item.note || ''),
+    sourceKind: String(item.source_kind || 'upload'),
+    cover: String(item.cover_url || ''),
+    insertAt: String(item.insert_time || item.inserted_at || ''),
+    updatedAt: String(item.update_time || item.updated_at || '-'),
+    modalityTags,
+    formatTags,
+    languageTags,
+    readmeExcerpt: String(item.readme_excerpt || ''),
+    importProgress: Number(item.import_progress || 0),
+    importTotalFiles: Number(item.import_total_files || 0),
+    importDownloadedFiles: Number(item.import_downloaded_files || 0),
+    importErrorMessage: String(item.import_error_message || ''),
+    isImporting: rawStatus === 'downloading',
+    originStage: String(item.origin_stage || ''),
+    originDatasetId: Number(item.origin_dataset_id || 0),
+    originTaskType: String(item.origin_task_type || ''),
+    originTaskId: Number(item.origin_task_id || 0),
+    isGenerated: Boolean(item.origin_stage || item.origin_task_id || item.origin_dataset_id || ['trajectory', 'reasoning'].includes(String(item.type || '').toLowerCase()))
   }
 }
 
-const onCoverFileChange = (event) => {
-  const files = event?.target?.files
-  selectedCoverFile.value = files && files.length > 0 ? files[0] : null
+const datasetRows = computed(() => rawDatasets.value.map((item, index) => normalizeDataset(item, index)))
+const formatOptions = computed(() => [...formatFilterPresets])
+const languageOptions = computed(() => [...languageFilterPresets])
+const statusOptions = computed(() => [...statusFilterPresets])
+
+const toTimestamp = (value, fallback = 0) => {
+  const time = new Date(value || '').getTime()
+  return Number.isFinite(time) ? time : fallback
 }
 
-const triggerDatasetFolderPicker = () => {
-  datasetFilesInputRef.value?.click()
-}
-
-const triggerCoverFilePicker = () => {
-  coverFileInputRef.value?.click()
-}
-
-const onEditCoverChange = (event) => {
-  const files = event?.target?.files
-  editCoverFile.value = files && files.length > 0 ? files[0] : null
-}
-
-const selectedFolderLabel = computed(() => {
-  if (selectedDatasetFiles.value.length === 0) return 'No dataset folder selected'
-  const first = selectedDatasetFiles.value[0]?.webkitRelativePath || selectedDatasetFiles.value[0]?.name || ''
-  const folderName = first.includes('/') ? first.split('/')[0] : 'Selected files'
-  return `${folderName} (${selectedDatasetFiles.value.length} files)`
+const filteredRows = computed(() => {
+  return [...datasetRows.value].sort((left, right) => {
+    const delta = toTimestamp(right.updatedAt, right.id) - toTimestamp(left.updatedAt, left.id)
+    return delta !== 0 ? delta : right.id - left.id
+  })
 })
 
-const selectedCoverLabel = computed(() => selectedCoverFile.value?.name || 'No cover image selected')
-const editCoverLabel = computed(() => editCoverFile.value?.name || 'No new cover selected')
+const activeFilterCount = computed(
+  () =>
+    selectedFormats.value.length +
+    selectedLanguages.value.length +
+    selectedSizeLevels.value.length +
+    selectedStatuses.value.length
+)
 
-const normalizeSessionUser = (payload) => {
-  const session = payload?.data || payload || {}
-  const user = session?.user && typeof session.user === 'object' ? session.user : {}
-  const rawId = Number(user?.id || session?.user_id || session?.id || 0)
+const selectedFolderLabel = computed(() => {
+  if (!selectedDatasetFiles.value.length) return 'No folder selected'
+  const first = selectedDatasetFiles.value[0]
+  const relative = String(first.webkitRelativePath || first.name || '')
+  const rootFolder = relative.split('/')[0]
+  return `${rootFolder || 'Folder'} · ${selectedDatasetFiles.value.length} files`
+})
 
-  return {
-    id: Number.isFinite(rawId) && rawId > 0 ? rawId : null,
-    username: String(user?.username || session?.username || '').trim()
-  }
-}
+const selectedCoverLabel = computed(() => selectedCoverFile.value?.name || 'No cover selected')
 
-const setViewMode = (mode) => {
-  viewMode.value = mode === 'card' ? 'card' : 'list'
-}
-
-const resetUploadInputs = () => {
-  if (datasetFilesInputRef.value) datasetFilesInputRef.value.value = ''
-  if (coverFileInputRef.value) coverFileInputRef.value.value = ''
-}
-
-const getUploadModal = () => {
-  if (!uploadModalRef.value) return null
-  uploadModalInstance = Modal.getOrCreateInstance(uploadModalRef.value)
-  return uploadModalInstance
-}
-
-const getSampleModal = () => {
-  if (!sampleModalRef.value) return null
-  sampleModalInstance = Modal.getOrCreateInstance(sampleModalRef.value)
-  return sampleModalInstance
-}
-
-const openUploadModal = () => {
-  getUploadModal()?.show()
-}
-
-const closeUploadModal = () => {
-  getUploadModal()?.hide()
-}
-
-const openSampleModal = () => {
-  getSampleModal()?.show()
-}
-
-const closeSampleModal = () => {
-  getSampleModal()?.hide()
-}
-
-const refreshCurrentSession = async () => {
-  currentUsername.value = getStoredUsername()
-  currentUserId.value = null
-
-  if (!isLoggedIn()) return
-
-  try {
-    const response = await fetchCurrentSession()
-    const sessionUser = normalizeSessionUser(response)
-    currentUserId.value = sessionUser.id
-    currentUsername.value = sessionUser.username || getStoredUsername()
-  } catch {
-    currentUsername.value = getStoredUsername()
-    currentUserId.value = null
-  }
-}
-
-const refreshDatasets = async () => {
-  isLoading.value = true
-  notice.value = ''
-
-  try {
-    const response = await fetchDatasets()
-    const normalized = mapDatasets(response)
-    datasetRows.value = normalized
-
-    if (normalized.length === 0) {
-      return
-    }
-  } catch (error) {
-    notice.value = `Backend unavailable. (${error?.message || 'unknown error'})`
-  } finally {
-    isLoading.value = false
-  }
-}
-
-const goToDatasetDetail = (datasetId) => {
-  if (!datasetId) return
-  router.push(`/data-preparation/${datasetId}`)
-}
-
-const openSampleDetail = async (row) => {
-  if (!row?.id) return
-
-  sampleDetailDatasetName.value = row.name || `ID ${row.id}`
-  sampleDetailRows.value = []
-  isLoadingSampleDetail.value = true
-  openSampleModal()
-
-  try {
-    const response = await fetchDatasetDetail(row.id)
-    const detail = response?.data || response
-    sampleDetailRows.value = Array.isArray(detail?.sample_data) ? detail.sample_data : []
-  } catch (error) {
-    notice.value = `Load sample failed. (${error?.message || 'unknown error'})`
-  } finally {
-    isLoadingSampleDetail.value = false
-  }
-}
-
-const resetDatasetForm = () => {
+const resetLocalForm = () => {
   datasetForm.value = {
     name: '',
     type: 'instruction',
+    language: 'multi',
     source: '',
-    language: 'zh',
     note: ''
   }
   selectedDatasetFiles.value = []
   selectedCoverFile.value = null
-  resetUploadInputs()
+  if (datasetFilesInputRef.value) datasetFilesInputRef.value.value = ''
+  if (coverFileInputRef.value) coverFileInputRef.value.value = ''
 }
 
-const submitDataset = async () => {
-  if (!isLoggedIn()) {
-    notice.value = 'Please login first before uploading datasets.'
+const resetHuggingFaceForm = () => {
+  huggingFaceForm.value = {
+    repoId: '',
+    revision: '',
+    name: '',
+    note: ''
+  }
+}
+
+const openImportModal = () => {
+  notice.value = ''
+  if (!importModalInstance && importModalRef.value) {
+    importModalInstance = new Modal(importModalRef.value)
+  }
+  importModalInstance?.show()
+}
+
+const closeImportModal = () => {
+  importModalInstance?.hide()
+}
+
+const getFilterRef = (group) => {
+  if (group === 'formats') return selectedFormats
+  if (group === 'languages') return selectedLanguages
+  if (group === 'sizes') return selectedSizeLevels
+  if (group === 'statuses') return selectedStatuses
+  return null
+}
+
+const toggleFilterSelection = (group, value) => {
+  const targetRef = getFilterRef(group)
+  if (!targetRef) return
+
+  const current = Array.isArray(targetRef.value) ? targetRef.value : []
+  if (current.includes(value)) {
+    targetRef.value = current.filter((item) => item !== value)
+  } else {
+    targetRef.value = [...current, value]
+  }
+}
+
+const applySearch = async () => {
+  appliedSearchKeyword.value = pendingSearchKeyword.value.trim()
+  appliedFormats.value = [...selectedFormats.value]
+  appliedLanguages.value = [...selectedLanguages.value]
+  appliedSizeLevels.value = [...selectedSizeLevels.value]
+  appliedStatuses.value = [...selectedStatuses.value]
+  await loadDatasets()
+}
+
+const toggleFiltersCollapsed = () => {
+  isFiltersCollapsed.value = !isFiltersCollapsed.value
+}
+
+const preciseDateTime = (value) => {
+  const time = new Date(value || '')
+  if (Number.isNaN(time.getTime())) return '-'
+  const parts = [
+    time.getFullYear(),
+    String(time.getMonth() + 1).padStart(2, '0'),
+    String(time.getDate()).padStart(2, '0')
+  ]
+  const clock = [
+    String(time.getHours()).padStart(2, '0'),
+    String(time.getMinutes()).padStart(2, '0'),
+    String(time.getSeconds()).padStart(2, '0')
+  ]
+  return `${parts.join('-')} ${clock.join(':')}`
+}
+
+const cardTags = (row) => {
+  const values = []
+  const seen = new Set()
+  const add = (tag) => {
+    const normalized = String(tag || '').trim()
+    if (!normalized || seen.has(normalized)) return
+    seen.add(normalized)
+    values.push(normalized)
+  }
+  add(row.typeLabel)
+  row.modalityTags.forEach(add)
+  row.languageTags.forEach(add)
+  row.formatTags.forEach(add)
+  if (row.isGenerated) add('Generated')
+  if (row.isImporting) add('Downloading')
+  return values.slice(0, 6)
+}
+
+const extraTagCount = (row) => {
+  const values = new Set()
+  values.add(String(row.typeLabel || '').trim())
+  row.modalityTags.forEach((tag) => values.add(String(tag || '').trim()))
+  row.languageTags.forEach((tag) => values.add(String(tag || '').trim()))
+  row.formatTags.forEach((tag) => values.add(String(tag || '').trim()))
+  if (row.isGenerated) values.add('Generated')
+  if (row.isImporting) values.add('Downloading')
+  return Math.max(0, [...values].filter(Boolean).length - 6)
+}
+
+const clearFilters = () => {
+  selectedFormats.value = []
+  selectedLanguages.value = []
+  selectedSizeLevels.value = []
+  selectedStatuses.value = []
+}
+
+const goToDatasetDetail = (datasetId) => {
+  router.push({ name: 'DataPreparationDetail', params: { datasetId } })
+}
+
+const triggerDatasetFolderPicker = () => datasetFilesInputRef.value?.click()
+const triggerCoverFilePicker = () => coverFileInputRef.value?.click()
+
+const onDatasetFilesChange = (event) => {
+  selectedDatasetFiles.value = Array.from(event?.target?.files || [])
+}
+
+const onCoverFileChange = (event) => {
+  selectedCoverFile.value = event?.target?.files?.[0] || null
+}
+
+const loadSession = async () => {
+  try {
+    const response = await fetchCurrentSession()
+    const user = response?.data || response || {}
+    currentUsername.value = user.username || currentUsername.value
+  } catch {
+    currentUsername.value = getStoredUsername()
+  }
+}
+
+const refreshPolling = () => {
+  if (pollingTimer) {
+    window.clearInterval(pollingTimer)
+    pollingTimer = null
+  }
+  if (importingCount.value > 0) {
+    pollingTimer = window.setInterval(() => {
+      loadDatasets(true)
+    }, 3000)
+  }
+}
+
+const buildDatasetQueryPayload = () => ({
+  name_keyword: appliedSearchKeyword.value,
+  format_tags: [...appliedFormats.value],
+  language_tags: [...appliedLanguages.value],
+  size_levels: [...appliedSizeLevels.value],
+  statuses: [...appliedStatuses.value]
+})
+
+const loadDatasets = async (silent = false) => {
+  if (!silent) {
+    isLoading.value = true
+    notice.value = ''
+  }
+  try {
+    const response = await searchDatasets(buildDatasetQueryPayload())
+    rawDatasets.value = Array.isArray(response?.data) ? response.data : []
+    totalDatasetCount.value = Number(response?.meta?.total_count ?? rawDatasets.value.length)
+    importingCount.value = Number(response?.meta?.importing_count ?? rawDatasets.value.filter((item) => normalizeDataset(item).isImporting).length)
+    generatedCount.value = Number(response?.meta?.generated_count ?? rawDatasets.value.filter((item) => normalizeDataset(item).isGenerated).length)
+  } catch (error) {
+    notice.value = error.message || 'Failed to load datasets.'
+  } finally {
+    refreshPolling()
+    if (!silent) isLoading.value = false
+  }
+}
+
+const submitLocalUpload = async () => {
+  if (!datasetForm.value.name.trim()) {
+    notice.value = 'Dataset name is required.'
     return
   }
-  if (!datasetForm.value.name) return
-  if (selectedDatasetFiles.value.length === 0) {
+  if (!selectedDatasetFiles.value.length) {
     notice.value = 'Please select a dataset folder.'
     return
   }
 
-  isSubmitting.value = true
+  isSubmittingUpload.value = true
   notice.value = ''
   try {
     const formData = new FormData()
-    selectedDatasetFiles.value.forEach((file, index) => {
-      formData.append('files', file, file.webkitRelativePath || file.name)
-      if (index === 0) formData.append('file', file, file.name)
+    formData.append('name', datasetForm.value.name.trim())
+    formData.append('type', datasetForm.value.type)
+    formData.append('language', datasetForm.value.language)
+    if (datasetForm.value.source.trim()) formData.append('source', datasetForm.value.source.trim())
+    if (datasetForm.value.note.trim()) formData.append('note', datasetForm.value.note.trim())
+    selectedDatasetFiles.value.forEach((file) => {
+      const filename = file.webkitRelativePath || file.name
+      formData.append('files', file, filename)
     })
     if (selectedCoverFile.value) {
       formData.append('cover', selectedCoverFile.value, selectedCoverFile.value.name)
     }
 
-    formData.append('name', datasetForm.value.name)
-    formData.append('type', datasetForm.value.type)
-    formData.append('language', datasetForm.value.language)
-    formData.append('source', datasetForm.value.source || '')
-    formData.append('note', datasetForm.value.note || '')
-    if (currentUserId.value) {
-      formData.append('user_id', String(currentUserId.value))
-    }
-    if (currentUsername.value) {
-      formData.append('username', currentUsername.value)
-    }
-
     await uploadDataset(formData)
-    closeUploadModal()
-    resetDatasetForm()
-    await refreshDatasets()
-  } catch (uploadError) {
-    notice.value = `Upload failed. (${uploadError?.message || 'unknown error'})`
+    closeImportModal()
+    resetLocalForm()
+    await loadDatasets()
+  } catch (error) {
+    notice.value = error.message || 'Dataset upload failed.'
   } finally {
-    isSubmitting.value = false
+    isSubmittingUpload.value = false
   }
 }
 
-const startEditDataset = (row) => {
-  editingDatasetId.value = row.id
-  editForm.value = {
-    name: row.name || '',
-    type: row.type || 'instruction',
-    source: row.source || '',
-    language: row.language || 'multi',
-    note: row.note || ''
+const submitHuggingFaceImport = async () => {
+  if (!huggingFaceForm.value.repoId.trim()) {
+    notice.value = 'HuggingFace dataset name is required.'
+    return
   }
-  editCoverFile.value = null
-  if (editCoverInputRef.value) editCoverInputRef.value.value = ''
-}
 
-const cancelEdit = () => {
-  editingDatasetId.value = null
-  editCoverFile.value = null
-  if (editCoverInputRef.value) editCoverInputRef.value.value = ''
-}
-
-const saveDatasetEdit = async () => {
-  if (!editingDatasetId.value) return
-
-  isSavingEdit.value = true
+  isSubmittingHuggingFace.value = true
   notice.value = ''
-
   try {
-    await updateDataset(editingDatasetId.value, {
-      name: editForm.value.name,
-      type: editForm.value.type,
-      language: editForm.value.language,
-      source: editForm.value.source || null,
-      note: editForm.value.note || null
+    await importHuggingFaceDataset({
+      repo_id: huggingFaceForm.value.repoId.trim(),
+      revision: huggingFaceForm.value.revision.trim() || undefined,
+      name: huggingFaceForm.value.name.trim() || undefined,
+      note: huggingFaceForm.value.note.trim() || undefined
     })
-
-    if (editCoverFile.value) {
-      await updateDatasetCover(editingDatasetId.value, editCoverFile.value)
-    }
-
-    cancelEdit()
-    await refreshDatasets()
+    closeImportModal()
+    resetHuggingFaceForm()
+    await loadDatasets()
   } catch (error) {
-    notice.value = `Update failed. (${error?.message || 'unknown error'})`
+    notice.value = error.message || 'HuggingFace import failed.'
   } finally {
-    isSavingEdit.value = false
+    isSubmittingHuggingFace.value = false
   }
 }
 
-const removeDataset = async (row) => {
-  const yes = window.confirm(`Delete dataset "${row.name}"? This action cannot be undone.`)
-  if (!yes) return
+const useInTrajectory = (row) => {
+  router.push({ name: 'TrajectorySynthesis', query: { datasetId: row.id } })
+}
 
-  notice.value = ''
-  try {
-    await deleteDataset(row.id)
-    if (editingDatasetId.value === row.id) {
-      cancelEdit()
-    }
-    await refreshDatasets()
-  } catch (error) {
-    notice.value = `Delete failed. (${error?.message || 'unknown error'})`
-  }
+const useInDistillation = (row) => {
+  router.push({ name: 'ReasoningDataDistillation', query: { sourceType: 'dataset', datasetId: row.id } })
 }
 
 onMounted(async () => {
-  await refreshCurrentSession()
-  await refreshDatasets()
+  if (importModalRef.value) {
+    importModalInstance = new Modal(importModalRef.value)
+  }
+  await Promise.all([loadSession(), loadDatasets()])
+  refreshPolling()
 })
 
 onBeforeUnmount(() => {
-  uploadModalInstance?.dispose()
-  sampleModalInstance?.dispose()
+  if (pollingTimer) {
+    window.clearInterval(pollingTimer)
+    pollingTimer = null
+  }
+  importModalInstance?.dispose()
+  importModalInstance = null
 })
 </script>
 
 <style scoped>
-.module-page {
+.dataset-page {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.85rem;
 }
 
-
-.dataset-card {
-  border: 1px solid #e9ecef;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+.hero-card,
+.toolbar-card,
+.dataset-section {
+  border: 1px solid rgba(27, 43, 65, 0.08);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top right, rgba(240, 221, 183, 0.34), transparent 28%),
+    linear-gradient(145deg, #fbfaf5 0%, #f4efe4 100%);
+  box-shadow: 0 24px 60px rgba(34, 44, 63, 0.08);
 }
 
-.dataset-card:hover {
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
-}
-
-
-.dataset-cover {
-  height: 150px;
-  object-fit: cover;
-}
-
-.dataset-cover-placeholder {
-  height: 150px;
+.hero-card {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: #f8f9fa;
-  color: #6c757d;
-  font-size: 0.875rem;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.2rem;
 }
 
-.upload-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  padding: 0.9rem;
-  border: 1px dashed #d7dee7;
-  border-radius: 14px;
-  background: #fbfcfe;
-}
-
-.upload-picker-button {
-  width: 100%;
+.eyebrow {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid #cfd8e3;
-  border-radius: 12px;
-  background: #ffffff;
-  color: #0f172a;
-  font-size: 0.95rem;
-  font-weight: 600;
-  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.upload-picker-button:hover {
-  border-color: #9fb4cc;
-  background: #f8fafc;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
-}
-
-.upload-picker-status {
-  color: #334155;
-  font-size: 0.86rem;
-  font-weight: 600;
-  line-height: 1.4;
-  word-break: break-word;
-}
-
-.upload-picker-hint {
-  color: #64748b;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(27, 43, 65, 0.08);
+  color: #355070;
   font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-title {
+  margin: 0;
+  color: #172033;
+  font-size: clamp(1.3rem, 1.8vw, 1.7rem);
+  line-height: 1.05;
+}
+
+.hero-copy {
+  max-width: 60ch;
+  color: #5e677a;
   line-height: 1.45;
+  font-size: 0.94rem;
 }
 
-.view-mode-toggle {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem;
-  border: 1px solid #d7dee7;
-  border-radius: 999px;
-  background: #f8fafc;
-  gap: 0.2rem;
+.hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
 }
 
-.view-mode-button {
-  display: inline-flex;
-  align-items: center;
+.hero-meta-strip {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.45rem;
-  border: 0;
-  background: transparent;
-  color: #5f6b7a;
+}
+
+.hero-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.32rem 0.68rem;
   border-radius: 999px;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.875rem;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(27, 43, 65, 0.08);
+  color: #445267;
+  font-size: 0.78rem;
   font-weight: 600;
-  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.view-mode-button:hover {
-  color: #1f2937;
+.hero-meta-pill.accent {
+  background: rgba(255, 244, 220, 0.96);
+  color: #9b5b17;
 }
 
-.view-mode-button.active {
-  background: #ffffff;
-  color: #0f172a;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+.hero-add-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding-inline: 1rem;
 }
 
-.view-mode-icon {
-  display: inline-grid;
+.toolbar-card {
+  padding: 0.95rem 1rem;
+}
+
+.toolbar-top {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0;
+}
+
+.toolbar-top .search-box {
+  flex: 1;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   flex-shrink: 0;
 }
 
-.view-mode-icon.list {
-  grid-template-columns: 1fr;
-  gap: 0.16rem;
-  width: 0.82rem;
+.toolbar-hint {
+  color: #67748a;
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
-.view-mode-icon.list span {
+.search-box {
+  position: relative;
   display: block;
-  width: 100%;
-  height: 0.12rem;
+}
+
+.search-box i {
+  position: absolute;
+  top: 50%;
+  left: 0.95rem;
+  transform: translateY(-50%);
+  color: #708090;
+}
+
+.search-box input {
+  padding-left: 2.7rem;
+  min-height: 44px;
+  border-radius: 16px;
+  border-color: rgba(43, 56, 78, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.toolbar-clear {
+  min-height: 40px;
+  border-radius: 14px;
+}
+
+.toolbar-search,
+.toolbar-toggle {
+  min-height: 40px;
+  border-radius: 14px;
+  white-space: nowrap;
+}
+
+.filter-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 1rem;
+  margin-top: 0.8rem;
+}
+
+.filter-group {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: start;
+}
+
+.filter-label {
+  padding-top: 0.36rem;
+  color: #576477;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.filter-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.filter-chip {
+  border: 1px solid rgba(45, 60, 84, 0.12);
   border-radius: 999px;
-  background: currentColor;
+  background: rgba(255, 255, 255, 0.86);
+  color: #40506a;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.28rem 0.58rem;
+  line-height: 1.1;
 }
 
-.view-mode-icon.card {
-  grid-template-columns: repeat(2, 0.28rem);
-  gap: 0.12rem;
-  width: 0.68rem;
-  height: 0.68rem;
+.filter-chip.active {
+  background: #172033;
+  border-color: #172033;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(23, 32, 51, 0.18);
 }
 
-.view-mode-icon.card span {
+.dataset-section {
+  padding: 0.95rem 1rem 1rem;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.loading-card,
+.empty-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 220px;
+  border: 1px dashed rgba(45, 60, 84, 0.16);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #526077;
+  text-align: center;
+  padding: 1rem;
+}
+
+.empty-card {
+  flex-direction: column;
+}
+
+.dataset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+  overflow: visible;
+}
+
+.dataset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid rgba(36, 48, 70, 0.1);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.86);
+  overflow: visible;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  position: relative;
+}
+
+.dataset-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 22px 50px rgba(35, 47, 69, 0.14);
+  border-color: rgba(35, 47, 69, 0.18);
+  z-index: 4;
+}
+
+.dataset-card-media {
+  height: 94px;
+  border-radius: 20px 20px 0 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top right, rgba(255, 220, 150, 0.55), transparent 33%),
+    linear-gradient(135deg, #ded4bf 0%, #e8e1d0 45%, #f7f3ea 100%);
+}
+
+.dataset-cover,
+.dataset-cover-fallback {
+  width: 100%;
+  height: 100%;
   display: block;
-  width: 0.28rem;
-  height: 0.28rem;
-  border-radius: 0.12rem;
-  background: currentColor;
 }
 
-.sample-pre {
+.dataset-cover {
+  object-fit: cover;
+}
+
+.dataset-cover-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  color: #1c2638;
+  text-align: center;
+}
+
+.dataset-cover-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.dataset-cover-meta {
+  font-size: 0.76rem;
+  color: #4e5e78;
+}
+
+.dataset-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.85rem;
+  border-radius: 0 0 20px 20px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.dataset-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.dataset-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dataset-badge-muted {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
+  background: rgba(33, 44, 67, 0.06);
+  color: #6b7280;
+  font-size: 0.72rem;
+}
+
+.dataset-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(23, 32, 51, 0.08);
+  color: #2f405b;
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+.dataset-name {
+  margin: 0 0 0.25rem;
+  color: #172033;
+  font-size: 1rem;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.22rem 0.52rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(43, 56, 78, 0.08);
+  color: #435066;
+  white-space: nowrap;
+}
+
+.status-pill.is-ready {
+  background: rgba(28, 130, 109, 0.14);
+  color: #156d5d;
+}
+
+.status-pill.is-downloading {
+  background: rgba(207, 109, 46, 0.14);
+  color: #b05d1e;
+}
+
+.status-pill.is-failed {
+  background: rgba(180, 53, 69, 0.12);
+  color: #a22735;
+}
+
+.status-pill.is-uploaded {
+  background: rgba(53, 89, 154, 0.12);
+  color: #2b5a96;
+}
+
+.dataset-summary {
   margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
+  color: #586173;
+  line-height: 1.45;
+  font-size: 0.83rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.24rem 0.54rem;
+  background: rgba(33, 44, 67, 0.06);
+  color: #45546b;
+  font-size: 0.72rem;
+}
+
+.tag-chip.muted {
+  opacity: 0.75;
+}
+
+.progress-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.72rem;
+  border-radius: 16px;
+  background: rgba(249, 241, 226, 0.85);
+  border: 1px solid rgba(207, 109, 46, 0.12);
+}
+
+.progress-copy,
+.progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+  color: #7b5a3b;
+}
+
+.tag-groups {
+  min-height: 1.8rem;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tag-list.compact {
+  gap: 0.3rem;
+}
+
+.dataset-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: auto;
+  padding-top: 0.1rem;
+  border-top: 1px solid rgba(33, 44, 67, 0.08);
+}
+
+.footer-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  color: #748094;
+  font-size: 0.74rem;
+  min-width: 0;
+}
+
+.footer-size {
+  color: #223147;
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.action-menu {
+  position: relative;
+  z-index: 8;
+}
+
+.action-menu summary {
+  list-style: none;
+}
+
+.action-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.dataset-more-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(35, 49, 75, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #34445d;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-menu[open] .action-menu-panel {
+  display: flex;
+}
+
+.action-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.55rem);
+  z-index: 10;
+  display: none;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 0.35rem;
+  border-radius: 16px;
+  border: 1px solid rgba(33, 44, 67, 0.12);
+  background: #fffefb;
+  box-shadow: 0 18px 36px rgba(30, 40, 59, 0.14);
+}
+
+.action-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  color: #23314b;
+  border-radius: 12px;
+}
+
+.action-item:hover:not(:disabled) {
+  background: rgba(35, 49, 75, 0.08);
+}
+
+.action-item:disabled {
+  color: #a1a8b3;
+}
+
+.import-modal {
+  border: 0;
+  border-radius: 28px;
+  background: linear-gradient(180deg, #fffdf8 0%, #f5f0e5 100%);
+}
+
+.import-mode-switch {
+  display: inline-flex;
+  gap: 0.55rem;
+  padding: 0.3rem;
+  border-radius: 999px;
+  background: rgba(27, 43, 65, 0.08);
+  margin-bottom: 1rem;
+}
+
+.mode-pill {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.55rem 1rem;
+  background: transparent;
+  color: #41516d;
+  font-weight: 600;
+}
+
+.mode-pill.active {
+  background: #172033;
+  color: #fff;
+}
+
+.upload-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.upload-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(36, 48, 70, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.upload-panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.upload-panel-title {
+  color: #1d2738;
+  font-weight: 700;
+}
+
+.upload-panel-copy,
+.upload-status,
+.hf-hint {
+  color: #667085;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.hf-hint {
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(36, 48, 70, 0.08);
+}
+
+@media (max-width: 992px) {
+  .hero-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-add-btn {
+    width: 100%;
+  }
+
+  .toolbar-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .filter-group {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .upload-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dataset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-groups {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .dataset-section,
+  .hero-card,
+  .toolbar-card {
+    padding: 1rem;
+  }
+
+  .dataset-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dataset-card-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .action-menu-panel {
+    left: 0;
+    right: auto;
+  }
+
+}
+
+@media (min-width: 993px) and (max-width: 1320px) {
+  .dataset-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 </style>
