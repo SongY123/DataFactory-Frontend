@@ -8,8 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "desktop": "electron electron/main.mjs",
-    "desktop:dev": "DATAFACTORY_ELECTRON_DEV=1 concurrently -k \"vite --host 127.0.0.1 --port 8001\" \"wait-on tcp:127.0.0.1:8001 && electron electron/main.mjs\""
+    "desktop": "npm run build && electron electron/main.mjs",
+    "desktop:dev": "set \"DATAFACTORY_ELECTRON_DEV=1\" && concurrently -k \"vite --host 127.0.0.1 --port 8001\" \"wait-on tcp:127.0.0.1:8001 && electron electron/main.mjs\""
   },
   "dependencies": {
     "bootstrap": "^5.3.8",

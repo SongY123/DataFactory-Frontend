@@ -241,8 +241,6 @@
         </div>
       </div>
 
-      <div v-if="notice" class="alert alert-info mx-3 mt-3 mb-0 py-2 px-3" role="alert">{{ notice }}</div>
-
       <div ref="chatBodyRef" class="chat-body">
         <div v-if="!messages.length" class="chat-empty-state">
           <div class="chat-empty-card">
@@ -285,14 +283,14 @@
                         <template v-if="step.status === 'running'">
                           <span class="step-running-label">Thinking</span>
                           <button
-                            class="stream-control-btn stream-control-inline"
+                            class="stream-control-btn stream-control-inline thinking-indicator-btn"
                             type="button"
                             :disabled="!isStreaming"
                             title="Stop response"
                             aria-label="Stop response"
                             @click="stopStreaming"
                           >
-                            <span class="stop-square-icon" aria-hidden="true"></span>
+                            <span class="stop-square-icon thinking-indicator-icon" aria-hidden="true"></span>
                           </button>
                         </template>
                         <i v-else-if="step.status === 'done'" class="bi bi-check-circle-fill text-success"></i>
@@ -1499,13 +1497,6 @@ async function refreshAssetTree({ silent = true } = {}) {
 async function removeAsset(node) {
   if (!node?.path || isBusy.value) return
 
-  const confirmed = typeof window === 'undefined'
-    ? true
-    : window.confirm(node.type === 'folder'
-      ? `Delete folder "${node.name}" and all nested files?`
-      : `Delete file "${node.name}"?`)
-  if (!confirmed) return
-
   isUploading.value = true
   try {
     if (node.type === 'folder') {
@@ -1627,8 +1618,18 @@ function isTableSeparatorRow(line) {
   return cells.every((cell) => /^:?-{3,}:?$/.test(cell))
 }
 
-function renderMarkdown(raw, workspace = '') {
+function normalizeStreamingMarkdownSource(raw) {
   const source = String(raw || '').replace(/\r\n?/g, '\n')
+  if (!source) return ''
+
+  const fenceLines = source.match(/^\s*```[a-zA-Z0-9_-]*\s*$/gm) || []
+  if (fenceLines.length % 2 === 0) return source
+
+  return `${source}\n\`\`\``
+}
+
+function renderMarkdown(raw, workspace = '') {
+  const source = normalizeStreamingMarkdownSource(raw)
   if (!source.trim()) return ''
 
   const codeBlocks = []
@@ -3448,6 +3449,10 @@ watch(
   padding: 0;
 }
 
+.thinking-indicator-btn {
+  box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.16);
+}
+
 .stream-control-composer {
   width: 34px;
   height: 34px;
@@ -3476,6 +3481,34 @@ watch(
   background: currentColor;
   display: inline-block;
   flex-shrink: 0;
+}
+
+.thinking-indicator-icon {
+  animation: thinkingPulse 1.15s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes thinkingPulse {
+  0% {
+    transform: scale(0.82);
+    opacity: 0.72;
+  }
+
+  50% {
+    transform: scale(1.28);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0.82);
+    opacity: 0.72;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-indicator-icon {
+    animation: none;
+  }
 }
 
 .markdown-body {
