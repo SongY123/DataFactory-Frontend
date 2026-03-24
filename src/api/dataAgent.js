@@ -175,6 +175,14 @@ export const deleteAgentAssetFile = (path) =>
     method: 'DELETE'
   })
 
+export const fetchAgentAssetFilePreview = (path, params = {}) => {
+  const query = new URLSearchParams()
+  query.set('path', String(path || ''))
+  if (params.page) query.set('page', String(params.page))
+  if (params.page_size) query.set('page_size', String(params.page_size))
+  return request(`/files/preview?${query.toString()}`)
+}
+
 export const uploadAgentInteractionFile = (file, folderPath = '') => {
   const formData = new FormData()
   formData.append('file', file, file.name)

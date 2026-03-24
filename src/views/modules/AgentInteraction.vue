@@ -423,9 +423,9 @@
     </section>
   </div>
 
-  <div class="modal fade" tabindex="-1" ref="modelConfigModalRef" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-      <div class="modal-content">
+    <div class="modal fade" tabindex="-1" ref="modelConfigModalRef" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
         <div class="modal-header">
           <div>
             <h6 class="modal-title mb-1">Model Configuration</h6>
@@ -509,6 +509,95 @@
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div class="modal fade" tabindex="-1" ref="assetPreviewModalRef" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <div>
+                <h6 class="modal-title mb-1">Data Preview</h6>
+                <p class="text-muted small mb-0">{{ assetPreviewTitle }}</p>
+              </div>
+              <button type="button" class="btn-close" @click="closeAssetPreviewModal"></button>
+            </div>
+
+            <div class="modal-body">
+              <div v-if="isAssetPreviewLoading" class="asset-preview-empty">
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Loading preview...</span>
+              </div>
+
+              <div v-else-if="assetPreviewError" class="alert alert-warning py-2 px-3 mb-0">
+                {{ assetPreviewError }}
+              </div>
+
+              <div v-else-if="!assetPreview.columns.length" class="asset-preview-empty text-muted">
+                No preview data is available for this file.
+              </div>
+
+              <div v-else class="asset-preview-table-wrap table-responsive">
+                <table class="table table-sm align-middle mb-0 asset-preview-table">
+                  <thead class="table-light">
+                  <tr>
+                    <th class="asset-preview-index-col">#</th>
+                    <th
+                      v-for="column in assetPreview.columns"
+                      :key="`asset-preview-col-${column}`"
+                    >
+                      {{ column }}
+                    </th>
+                  </tr>
+                  </thead>
+                  <tbody>
+                  <tr v-for="(row, rowIndex) in assetPreview.rows" :key="`asset-preview-row-${assetPreview.start_row + rowIndex}`">
+                    <td class="asset-preview-index-cell">{{ assetPreview.start_row + rowIndex }}</td>
+                    <td
+                      v-for="column in assetPreview.columns"
+                      :key="`asset-preview-cell-${assetPreview.start_row + rowIndex}-${column}`"
+                      :title="String(row?.[column] ?? '')"
+                    >
+                      <div class="asset-preview-cell">{{ String(row?.[column] ?? '') }}</div>
+                    </td>
+                  </tr>
+                  <tr v-if="!assetPreview.rows.length">
+                    <td :colspan="assetPreview.columns.length + 1" class="text-center text-muted py-3">
+                      No rows on this page.
+                    </td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="modal-footer justify-content-between">
+              <div class="small text-muted">
+                {{ assetPreviewRangeText }}
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button
+                  class="btn btn-outline-secondary btn-sm"
+                  type="button"
+                  :disabled="isAssetPreviewLoading || assetPreview.page <= 1"
+                  @click="goToAssetPreviewPage(assetPreview.page - 1)"
+                >
+                  Prev
+                </button>
+                <span class="small text-muted">Page {{ assetPreview.page }} / {{ assetPreview.total_pages }}</span>
+                <button
+                  class="btn btn-outline-secondary btn-sm"
+                  type="button"
+                  :disabled="isAssetPreviewLoading || assetPreview.page >= assetPreview.total_pages"
+                  @click="goToAssetPreviewPage(assetPreview.page + 1)"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -522,6 +611,7 @@ import {
   deleteAgentAssetFile,
   deleteAgentAssetFolder,
   fetchAgenticSynthesisTasks,
+  fetchAgentAssetFilePreview,
   fetchAgentAssetTree,
   fetchDatasets,
   fetchUserPreference,
@@ -539,6 +629,7 @@ const INTERACTIVE_PREFERENCE_KEY = 'interactive_testing'
 const LOCAL_VLLM_ENDPOINT = 'http://127.0.0.1:8000/v1'
 const LOCAL_VLLM_MODEL_NAME = 'Qwen2.5-1.5B-Instruct'
 const DEFAULT_REMOTE_MODEL_NAME = 'gpt-4o-mini'
+const ASSET_PREVIEW_PAGE_SIZE = 200
 const MAX_CONVERSATION_PAGES = 6
 const CONVERSATION_TITLE_LIMIT = 30
 const route = useRoute()
@@ -548,6 +639,7 @@ const fileInputRef = ref(null)
 const composerRef = ref(null)
 const chatBodyRef = ref(null)
 const modelConfigModalRef = ref(null)
+const assetPreviewModalRef = ref(null)
 const modelPickerRef = ref(null)
 const conversationPickerRef = ref(null)
 const pendingFolderInputRef = ref(null)
@@ -578,6 +670,21 @@ const savedModelConfig = ref(null)
 const activeModelId = ref(SERVER_DEFAULT_MODEL_ID)
 const modelFormError = ref('')
 const modelForm = ref(createEmptyModelForm())
+const assetPreviewTitle = ref('')
+const assetPreview = ref({
+  path: '',
+  file_name: '',
+  columns: [],
+  rows: [],
+  page: 1,
+  page_size: ASSET_PREVIEW_PAGE_SIZE,
+  total_rows: 0,
+  total_pages: 1,
+  start_row: 0,
+  end_row: 0
+})
+const isAssetPreviewLoading = ref(false)
+const assetPreviewError = ref('')
 const isModelMenuOpen = ref(false)
 const isConversationMenuOpen = ref(false)
 const conversationPages = ref([createConversationPage(1)])
@@ -585,6 +692,8 @@ const activeConversationId = ref(conversationPages.value[0].id)
 const nextConversationNumber = ref(2)
 
 let modelConfigModalInstance = null
+let assetPreviewModalInstance = null
+let assetPreviewRequestId = 0
 
 const activeConversation = computed(() =>
   conversationPages.value.find((item) => item.id === activeConversationId.value) || conversationPages.value[0] || null
@@ -644,13 +753,7 @@ const selectionSummaryText = computed(() => {
   return ''
 })
 const composerPlaceholder = computed(() => {
-  if (queuedFileAssets.value.length === 1) {
-    return `Ask a question about ${queuedFileAssets.value[0].name}. Enter sends, Shift+Enter adds a new line.`
-  }
-  if (queuedFileAssets.value.length > 1) {
-    return `Ask a question about ${queuedFileAssets.value.length} selected files. The agent will analyze them one by one. Enter sends, Shift+Enter adds a new line.`
-  }
-  return 'Ask a question about the uploaded files. Enter sends, Shift+Enter adds a new line.'
+  return 'Ask anything'
 })
 const isRootChecked = computed(() => allFilePaths.value.length > 0 && allFilePaths.value.every((path) => checkedFilePathSet.value.has(path)))
 const isRootIndeterminate = computed(() => {
@@ -663,6 +766,12 @@ const currentTargetFolderPath = computed(() => {
 })
 const currentTargetFolderLabel = computed(() => currentTargetFolderPath.value || 'Root')
 const flattenedAssetRows = computed(() => flattenVisibleAssetRows(assetTreeItems.value, pendingFolderDraft.value))
+const assetPreviewRangeText = computed(() => {
+  if (assetPreviewError.value) return ''
+  const totalRows = Number(assetPreview.value.total_rows || 0)
+  if (!totalRows) return '0 rows'
+  return `Showing ${assetPreview.value.start_row}-${assetPreview.value.end_row} of ${totalRows} rows`
+})
 const activeModelConfig = computed(() => {
   if (activeModelId.value !== SAVED_MODEL_ID) return null
   return savedModelConfig.value || null
@@ -960,6 +1069,12 @@ function getModelConfigModal() {
   return modelConfigModalInstance
 }
 
+function getAssetPreviewModal() {
+  if (!assetPreviewModalRef.value) return null
+  assetPreviewModalInstance = Modal.getOrCreateInstance(assetPreviewModalRef.value)
+  return assetPreviewModalInstance
+}
+
 function populateModelFormFromConfig(config = null) {
   modelFormError.value = ''
   if (!config) {
@@ -982,6 +1097,87 @@ function openModelConfigModal() {
   isModelMenuOpen.value = false
   populateModelFormFromConfig(savedModelConfig.value)
   getModelConfigModal()?.show()
+}
+
+async function loadAssetPreviewPage(path, page = 1) {
+  const normalizedPath = cleanString(path)
+  if (!normalizedPath) return
+
+  const requestId = ++assetPreviewRequestId
+  isAssetPreviewLoading.value = true
+  assetPreviewError.value = ''
+
+  try {
+    const data = await fetchAgentAssetFilePreview(normalizedPath, {
+      page,
+      page_size: ASSET_PREVIEW_PAGE_SIZE
+    })
+    if (requestId !== assetPreviewRequestId) return
+
+    assetPreview.value = {
+      path: String(data?.path || normalizedPath),
+      file_name: String(data?.file_name || ''),
+      columns: Array.isArray(data?.columns) ? data.columns.map((item) => String(item || '')) : [],
+      rows: Array.isArray(data?.rows) ? data.rows : [],
+      page: Number(data?.page || page || 1),
+      page_size: Number(data?.page_size || ASSET_PREVIEW_PAGE_SIZE),
+      total_rows: Number(data?.total_rows || 0),
+      total_pages: Number(data?.total_pages || 1),
+      start_row: Number(data?.start_row || 0),
+      end_row: Number(data?.end_row || 0)
+    }
+    assetPreviewTitle.value = String(data?.path || normalizedPath)
+  } catch (error) {
+    if (requestId !== assetPreviewRequestId) return
+    assetPreviewError.value = error?.message || 'Failed to load file preview.'
+    assetPreview.value = {
+      path: normalizedPath,
+      file_name: '',
+      columns: [],
+      rows: [],
+      page: 1,
+      page_size: ASSET_PREVIEW_PAGE_SIZE,
+      total_rows: 0,
+      total_pages: 1,
+      start_row: 0,
+      end_row: 0
+    }
+  } finally {
+    if (requestId === assetPreviewRequestId) {
+      isAssetPreviewLoading.value = false
+    }
+  }
+}
+
+async function openAssetPreview(node) {
+  if (!node?.path || node.type !== 'file') return
+  assetPreviewTitle.value = node.path
+  assetPreviewError.value = ''
+  assetPreview.value = {
+    path: node.path,
+    file_name: node.name || '',
+    columns: [],
+    rows: [],
+    page: 1,
+    page_size: ASSET_PREVIEW_PAGE_SIZE,
+    total_rows: 0,
+    total_pages: 1,
+    start_row: 0,
+    end_row: 0
+  }
+  await nextTick()
+  getAssetPreviewModal()?.show()
+  await loadAssetPreviewPage(node.path, 1)
+}
+
+async function goToAssetPreviewPage(page) {
+  const normalizedPath = cleanString(assetPreview.value.path)
+  if (!normalizedPath) return
+  await loadAssetPreviewPage(normalizedPath, page)
+}
+
+function closeAssetPreviewModal() {
+  getAssetPreviewModal()?.hide()
 }
 
 function closeModelConfigModal() {
@@ -1397,10 +1593,16 @@ function toggleFolder(path) {
   ensureExpandedFolder(normalized)
 }
 
-function selectAssetNode(node) {
+async function selectAssetNode(node) {
   selectedAssetPath.value = node.path
   selectedAssetType.value = node.type
-  if (node.type === 'folder') ensureExpandedFolder(node.path)
+  if (node.type === 'folder') {
+    ensureExpandedFolder(node.path)
+    return
+  }
+  if (String(node.extension || '').toLowerCase() === '.csv') {
+    await openAssetPreview(node)
+  }
 }
 
 function beginInlineFolderCreate(parentPath = currentTargetFolderPath.value) {
@@ -2262,6 +2464,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
   conversationPages.value.forEach((conversation) => conversation.currentStreamController?.abort())
   modelConfigModalInstance?.dispose()
+  assetPreviewModalInstance?.dispose()
 })
 
 watch(
@@ -2348,6 +2551,44 @@ watch(
 
 :global(.modal-backdrop) {
   z-index: 1390;
+}
+
+.asset-preview-empty {
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.asset-preview-table-wrap {
+  max-height: 62vh;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.asset-preview-table {
+  min-width: max-content;
+}
+
+.asset-preview-index-col {
+  width: 5rem;
+  min-width: 5rem;
+}
+
+.asset-preview-index-cell {
+  color: #64748b;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.asset-preview-cell {
+  max-width: 18rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .platform-context-header {
