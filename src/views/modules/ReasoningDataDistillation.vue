@@ -374,6 +374,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
+import { formatAppDateTime } from '../../utils/datetime'
 import { chooseLocalDirectory } from '../../utils/desktop'
 import {
   createReasoningDistillationTask,
@@ -507,24 +508,7 @@ const setNotice = (message, type = 'info') => {
   }, timeoutMs)
 }
 
-const formatDateTime = (value) => {
-  if (!value || value === '-') return '-'
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return String(value).replace('T', ' ').slice(0, 19)
-  }
-
-  const pad = (num) => String(num).padStart(2, '0')
-  const y = date.getFullYear()
-  const m = pad(date.getMonth() + 1)
-  const d = pad(date.getDate())
-  const hh = pad(date.getHours())
-  const mm = pad(date.getMinutes())
-  const ss = pad(date.getSeconds())
-
-  return `${y}-${m}-${d} ${hh}:${mm}:${ss}`
-}
+const formatDateTime = (value) => formatAppDateTime(value)
 
 const mapDatasets = (raw) => {
   const list = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []

@@ -214,7 +214,7 @@
       </div>
     </section>
 
-    <div class="modal fade" tabindex="-1" ref="importModalRef" aria-hidden="true">
+    <div class="modal fade dataset-import-modal" tabindex="-1" ref="importModalRef" aria-hidden="true">
       <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content import-modal">
           <div class="modal-header border-0 pb-0">
@@ -232,7 +232,7 @@
                 type="button"
                 @click="importMode = 'upload'"
               >
-                Local Upload
+                Local
               </button>
               <button
                 class="mode-pill"
@@ -336,12 +336,12 @@
 
             <form v-else class="d-flex flex-column gap-3" @submit.prevent="submitHuggingFaceImport">
               <div>
-                <label class="form-label">Dataset Name on HuggingFace</label>
+                <label class="form-label">Dataset Name on Hugging Face</label>
                 <input
                   v-model.trim="huggingFaceForm.repoId"
                   type="text"
                   class="form-control"
-                  placeholder="for example: ag_news or Open-Orca/OpenOrca"
+                  placeholder="LipengCS/Table-GPT"
                   required
                 >
               </div>
@@ -398,6 +398,7 @@ import {
   uploadDataset
 } from '../../api/dataAgent'
 import { getStoredUsername } from '../../api/auth'
+import { formatAppDateTime, toAppTimestamp } from '../../utils/datetime'
 
 const router = useRouter()
 
@@ -563,14 +564,9 @@ const formatOptions = computed(() => [...formatFilterPresets])
 const languageOptions = computed(() => [...languageFilterPresets])
 const statusOptions = computed(() => [...statusFilterPresets])
 
-const toTimestamp = (value, fallback = 0) => {
-  const time = new Date(value || '').getTime()
-  return Number.isFinite(time) ? time : fallback
-}
-
 const filteredRows = computed(() => {
   return [...datasetRows.value].sort((left, right) => {
-    const delta = toTimestamp(right.updatedAt, right.id) - toTimestamp(left.updatedAt, left.id)
+    const delta = toAppTimestamp(right.updatedAt, right.id) - toAppTimestamp(left.updatedAt, left.id)
     return delta !== 0 ? delta : right.id - left.id
   })
 })
@@ -661,21 +657,7 @@ const toggleFiltersCollapsed = () => {
   isFiltersCollapsed.value = !isFiltersCollapsed.value
 }
 
-const preciseDateTime = (value) => {
-  const time = new Date(value || '')
-  if (Number.isNaN(time.getTime())) return '-'
-  const parts = [
-    time.getFullYear(),
-    String(time.getMonth() + 1).padStart(2, '0'),
-    String(time.getDate()).padStart(2, '0')
-  ]
-  const clock = [
-    String(time.getHours()).padStart(2, '0'),
-    String(time.getMinutes()).padStart(2, '0'),
-    String(time.getSeconds()).padStart(2, '0')
-  ]
-  return `${parts.join('-')} ${clock.join(':')}`
-}
+const preciseDateTime = (value) => formatAppDateTime(value)
 
 const cardTags = (row) => {
   const values = []
@@ -1407,6 +1389,14 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 28px;
   background: linear-gradient(180deg, #fffdf8 0%, #f5f0e5 100%);
+}
+
+:global(.dataset-import-modal) {
+  z-index: 1400;
+}
+
+:global(.modal-backdrop) {
+  z-index: 1390;
 }
 
 .import-mode-switch {

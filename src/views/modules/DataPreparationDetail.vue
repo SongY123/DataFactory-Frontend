@@ -25,8 +25,19 @@
 
           <h1 class="hero-title">{{ dataset.name }}</h1>
           <p class="hero-copy">
-            {{ dataset.note || dataset.readmeExcerpt || 'No dataset description has been recorded yet.' }}
+            {{ dataset.note }}
           </p>
+
+          <a
+            v-if="huggingFaceDatasetUrl"
+            class="hero-hf-link"
+            :href="huggingFaceDatasetUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <i class="bi bi-box-arrow-up-right"></i>
+            <span>{{ huggingFaceDatasetUrl }}</span>
+          </a>
 
           <div class="hero-meta">
             <span>{{ dataset.typeLabel }}</span>
@@ -453,6 +464,7 @@ import {
   queryDatasetSql,
   updateDataset
 } from '../../api/dataAgent'
+import { formatAppDateTime } from '../../utils/datetime'
 
 const route = useRoute()
 const router = useRouter()
@@ -558,21 +570,7 @@ const formatSize = (size) => {
   return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-const formatDateTime = (value) => {
-  const time = new Date(value || '')
-  if (Number.isNaN(time.getTime())) return String(value || '-')
-  const datePart = [
-    time.getFullYear(),
-    String(time.getMonth() + 1).padStart(2, '0'),
-    String(time.getDate()).padStart(2, '0')
-  ].join('-')
-  const timePart = [
-    String(time.getHours()).padStart(2, '0'),
-    String(time.getMinutes()).padStart(2, '0'),
-    String(time.getSeconds()).padStart(2, '0')
-  ].join(':')
-  return `${datePart} ${timePart}`
-}
+const formatDateTime = (value) => formatAppDateTime(value)
 
 const originSummary = (row) => {
   const parts = []
@@ -617,6 +615,17 @@ const heroTags = computed(() => {
   if (!dataset.value) return []
   const values = [...dataset.value.modalityTags, ...dataset.value.formatTags, ...dataset.value.languageTags]
   return [...new Set(values)].slice(0, 12)
+})
+
+const huggingFaceDatasetUrl = computed(() => {
+  if (!dataset.value || dataset.value.sourceKind !== 'huggingface') return ''
+  const repoId = String(dataset.value.hfRepoId || dataset.value.name || '').trim()
+  if (!repoId) return ''
+  const encodedRepoId = repoId
+    .split('/')
+    .map((part) => encodeURIComponent(part))
+    .join('/')
+  return `https://huggingface.co/datasets/${encodedRepoId}`
 })
 
 const fileOptions = computed(() => Array.isArray(filesState.value.data_files) ? filesState.value.data_files : [])
@@ -1082,6 +1091,23 @@ watch(
   color: #5b6679;
   line-height: 1.65;
   max-width: 72ch;
+}
+
+.hero-hf-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: fit-content;
+  color: #1d4a8f;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.hero-hf-link:hover {
+  color: #143267;
+  text-decoration: underline;
 }
 
 .hero-meta {

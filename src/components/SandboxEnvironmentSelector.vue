@@ -180,6 +180,7 @@ import {
   deleteSandboxEnvironment,
   fetchSandboxEnvironments
 } from '../api/dataAgent'
+import { formatAppDateTime } from '../utils/datetime'
 
 const props = defineProps({
   modelValue: {
@@ -222,19 +223,7 @@ const selectedEnvironment = computed(() => {
   return environments.value.find((item) => String(item.id) === current) || null
 })
 
-const formatDateTime = (value) => {
-  const raw = String(value || '').trim()
-  if (!raw) return '-'
-  const date = new Date(raw)
-  if (Number.isNaN(date.getTime())) return raw.replace('T', ' ').slice(0, 19)
-
-  const pad = (num) => String(num).padStart(2, '0')
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate())
-  ].join('-') + ` ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-}
+const formatDateTime = (value) => formatAppDateTime(value)
 
 const getManagerModal = () => {
   if (!managerModalRef.value) return null
