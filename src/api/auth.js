@@ -7,6 +7,8 @@ const AUTH_ROLE_KEY = 'authRole'
 let sessionCheckPromise = null
 let lastSessionValid = null
 
+const authApiUrl = (path) => `${config.apiBase}${path}`
+
 const parseError = async (res) => {
   const text = await res.text()
   if (!text) return `Request failed (${res.status})`

@@ -139,6 +139,16 @@ const createMainWindow = async () => {
     return { action: 'deny' }
   })
 
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    console.error(
+      `[datafactory-desktop] renderer failed to load code=${errorCode} description=${errorDescription} url=${validatedURL} mainFrame=${isMainFrame}`
+    )
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[datafactory-desktop] renderer process gone', details)
+  })
+
   if (USE_DEV_SERVER) {
     await mainWindow.loadURL(DEV_SERVER_URL)
     mainWindow.webContents.openDevTools({ mode: 'detach' })

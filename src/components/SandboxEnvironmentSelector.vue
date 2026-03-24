@@ -145,7 +145,7 @@
                   type="text"
                   class="form-control"
                   maxlength="1000"
-                  placeholder="/opt/venvs/data-agent/bin/python"
+                  placeholder="C:\\Users\\name\\.conda\\envs\\data-agent\\python.exe or /opt/venvs/data-agent/bin/python"
                   :disabled="disabled || isCreating || isDeleting"
                 >
               </div>

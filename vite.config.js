@@ -4,8 +4,8 @@ import vue from '@vitejs/plugin-vue'
 const API_TARGET = process.env.DATAFACTORY_API_TARGET || 'http://127.0.0.1:8888'
 const SHOULD_OPEN_BROWSER = process.env.DATAFACTORY_ELECTRON_DEV !== '1'
 
-export default defineConfig({
-  base: './',
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? './' : '/',
   plugins: [vue()],
   server: {
     host: true,
@@ -22,4 +22,4 @@ export default defineConfig({
   build: {
     outDir: 'dist'
   }
-})
+}))
