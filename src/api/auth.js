@@ -1,4 +1,4 @@
-import { config } from '../config/global'
+import { config } from '../config/global.js'
 
 const AUTH_FLAG_KEY = 'authLoggedIn'
 const AUTH_USER_KEY = 'authUsername'
@@ -22,6 +22,8 @@ const parseError = async (res) => {
 
 const backendUnavailableMessage = (action = 'Request') =>
   `${action} failed because the backend service is unavailable. Make sure DataFactory backend is running on http://127.0.0.1:8888.`
+
+const authApiUrl = (path) => `${config.apiBase}${path}`
 
 const normalizeRoleFromResponse = (body) => {
   const candidates = [

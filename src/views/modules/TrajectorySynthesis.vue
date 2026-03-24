@@ -994,7 +994,9 @@ const backToTaskList = () => {
 
 const getResultModal = () => {
   if (!resultModalRef.value) return null
-  resultModalInstance = Modal.getOrCreateInstance(resultModalRef.value)
+  resultModalInstance = Modal.getOrCreateInstance(resultModalRef.value, {
+    backdrop: false
+  })
   return resultModalInstance
 }
 
