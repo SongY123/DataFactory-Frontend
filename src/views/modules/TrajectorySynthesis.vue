@@ -1037,39 +1037,30 @@ const startTask = async () => {
 
   try {
     const llmParamsJson = normalizeLlmParamsJson(taskForm.value.llmParamsJson)
-    const createdTasks = []
-    for (const datasetId of selectedDatasetIds) {
-      const response = await createAgenticSynthesisTask({
-        prompt: taskForm.value.prompt,
-        action_tags: [...DEFAULT_ACTION_TAGS],
-        llm_api_key: taskForm.value.modelProvider === 'local' ? 'local' : taskForm.value.llmApiKey,
-        llm_base_url: taskForm.value.llmBaseUrl,
-        llm_model_name: taskForm.value.llmModelName,
-        dataset_id: datasetId,
-        parallelism: Math.max(1, Math.min(32, Number(taskForm.value.parallelism) || 1)),
-        save_path: String(taskForm.value.savePath || '').trim() || undefined,
-        sandbox_environment_id: String(taskForm.value.sandboxEnvironmentId || '').trim() || undefined,
-        llm_params_json: llmParamsJson
-      })
-      const optimisticTask = mapTask(response?.data ?? response)
-      createdTasks.push(optimisticTask)
-      if (!tasks.value.some((item) => item.id === optimisticTask.id)) {
-        tasks.value.unshift(optimisticTask)
-      }
+    const response = await createAgenticSynthesisTask({
+      prompt: taskForm.value.prompt,
+      action_tags: [...DEFAULT_ACTION_TAGS],
+      llm_api_key: taskForm.value.modelProvider === 'local' ? 'local' : taskForm.value.llmApiKey,
+      llm_base_url: taskForm.value.llmBaseUrl,
+      llm_model_name: taskForm.value.llmModelName,
+      dataset_ids: selectedDatasetIds,
+      parallelism: Math.max(1, Math.min(32, Number(taskForm.value.parallelism) || 1)),
+      save_path: String(taskForm.value.savePath || '').trim() || undefined,
+      sandbox_environment_id: String(taskForm.value.sandboxEnvironmentId || '').trim() || undefined,
+      llm_params_json: llmParamsJson
+    })
+
+    const createdTask = mapTask(response?.data ?? response)
+    if (!tasks.value.some((item) => item.id === createdTask.id)) {
+      tasks.value.unshift(createdTask)
     }
 
-    const latestTask = createdTasks[createdTasks.length - 1]
-    selectedTaskId.value = latestTask?.id || null
+    selectedTaskId.value = createdTask?.id || null
     taskPanelMode.value = 'tasks'
-    if (latestTask?.id) {
-      await inspectTask(latestTask.id, { silent: true })
+    if (createdTask?.id) {
+      await inspectTask(createdTask.id, { silent: true })
     }
-    setNotice(
-      createdTasks.length === 1
-        ? 'Task started successfully.'
-        : `${createdTasks.length} tasks started successfully.`,
-      'success'
-    )
+    setNotice('Task started successfully.', 'success')
   } catch (error) {
     setNotice(`Failed to start task. (${error?.message || 'backend error'})`, 'error')
   } finally {
