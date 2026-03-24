@@ -20,7 +20,7 @@
           <div class="hero-badges">
             <span class="badge badge-soft">Dataset</span>
             <span class="badge badge-soft">{{ sourceKindLabel(dataset.sourceKind) }}</span>
-            <span class="badge status-badge" :class="statusClass(dataset.status)">{{ formatStatusLabel(dataset.status) }}</span>
+            <span v-if="shouldShowDatasetStatus(dataset.status)" class="badge status-badge" :class="statusClass(dataset.status)">{{ formatStatusLabel(dataset.status) }}</span>
           </div>
 
           <h1 class="hero-title">{{ dataset.name }}</h1>
@@ -52,7 +52,7 @@
 
           <div v-if="dataset.isImporting" class="hero-progress">
             <div class="hero-progress-copy">
-              <span>Downloading HuggingFace dataset</span>
+              <span>Downloading Hugging Face dataset</span>
               <span>{{ dataset.importProgress }}%</span>
             </div>
             <div class="progress">
@@ -323,7 +323,7 @@
                 <dt>Size</dt>
                 <dd>{{ formatSize(dataset.size) }}</dd>
               </div>
-              <div>
+              <div v-if="shouldShowDatasetStatus(dataset.status)">
                 <dt>Status</dt>
                 <dd>{{ formatStatusLabel(dataset.status) }}</dd>
               </div>
@@ -562,6 +562,8 @@ const formatStatusLabel = (status) => {
   return String(normalized || '').replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
+const shouldShowDatasetStatus = (status) => normalizeDatasetStatus(status) !== 'uploaded'
+
 const formatSize = (size) => {
   const value = Number(size || 0)
   if (value < 1024) return `${value} B`
@@ -692,6 +694,25 @@ const syncTagEditor = () => {
   }
 }
 
+const applyDatasetImportProgress = (nextDetail) => {
+  if (!nextDetail) return
+  if (!dataset.value) {
+    dataset.value = nextDetail
+    return
+  }
+  dataset.value = {
+    ...dataset.value,
+    status: nextDetail.status,
+    updatedAt: nextDetail.updatedAt,
+    size: nextDetail.size,
+    importProgress: nextDetail.importProgress,
+    importTotalFiles: nextDetail.importTotalFiles,
+    importDownloadedFiles: nextDetail.importDownloadedFiles,
+    importErrorMessage: nextDetail.importErrorMessage,
+    isImporting: nextDetail.isImporting
+  }
+}
+
 const loadDataset = async () => {
   isLoading.value = true
   notice.value = ''
@@ -705,6 +726,28 @@ const loadDataset = async () => {
     dataset.value = null
   } finally {
     isLoading.value = false
+  }
+}
+
+const refreshDatasetImportProgress = async () => {
+  if (!dataset.value) return
+  try {
+    const wasImporting = Boolean(dataset.value.isImporting)
+    const response = await fetchDatasetDetail(route.params.datasetId)
+    const detail = response?.data || response || null
+    const normalized = detail ? normalizeDatasetDetail(detail) : null
+    if (!normalized) return
+
+    applyDatasetImportProgress(normalized)
+
+    if (wasImporting && !normalized.isImporting) {
+      await Promise.all([loadReadme(), loadFiles()])
+      if (selectedFilePath.value) {
+        await loadPreview(selectedFilePath.value)
+      }
+    }
+  } catch {
+    // Ignore transient polling errors to keep the detail page stable.
   }
 }
 
@@ -912,11 +955,7 @@ const refreshPolling = () => {
   }
   if (dataset.value?.isImporting) {
     pollingTimer = window.setInterval(async () => {
-      await loadDataset()
-      await Promise.all([loadReadme(), loadFiles()])
-      if (selectedFilePath.value && !dataset.value?.isImporting) {
-        await loadPreview(selectedFilePath.value)
-      }
+      await refreshDatasetImportProgress()
       if (!dataset.value?.isImporting && pollingTimer) {
         window.clearInterval(pollingTimer)
         pollingTimer = null

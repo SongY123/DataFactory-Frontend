@@ -30,18 +30,31 @@
             <h6 class="card-title mb-3">Task Configuration</h6>
 
             <form class="d-flex flex-column gap-3 task-config-form" @submit.prevent="startTask">
-              <label class="small text-muted mb-0">Prompt</label>
+              <div class="d-flex align-items-center justify-content-between gap-2">
+                <label class="small text-muted mb-0">Prompt</label>
+                <button class="btn btn-link btn-sm py-0" type="button" @click="resetPromptToTemplate">Reset to Template</button>
+              </div>
               <textarea
                 v-model="form.prompt"
                 @input="markPromptCustomized"
-                class="form-control"
+                class="form-control prompt-textarea"
                 rows="11"
                 required
                 placeholder="Describe how the model should synthesize reasoning supervision for the selected dataset."
               ></textarea>
-              <div class="d-flex align-items-center justify-content-between gap-2">
-                <span class="small text-muted">Prompt template enforces reasoning output wrapped in <code>&lt;think&gt;&lt;/think&gt;</code>.</span>
-                <button class="btn btn-link btn-sm py-0" type="button" @click="resetPromptToTemplate">Reset to Template</button>
+              <div class="prompt-placeholder-panel">
+                <div class="small text-muted">Placeholders</div>
+                <div v-if="promptPlaceholders.length" class="prompt-placeholder-list">
+                  <span
+                    v-for="placeholder in promptPlaceholders"
+                    :key="`prompt-chip-${placeholder}`"
+                    class="prompt-placeholder-chip"
+                    :class="placeholderToneClass(placeholder)"
+                  >
+                    {{ '{' + placeholder + '}' }}
+                  </span>
+                </div>
+                <div v-else class="small text-muted">No placeholders detected.</div>
               </div>
 
               <div class="mt-1">
@@ -115,24 +128,38 @@
                       <label v-for="item in datasetOptions" :key="`dataset-option-${item.id}`" class="dataset-select-item">
                         <input
                           class="form-check-input"
-                          type="radio"
-                          name="reasoning-dataset-selection"
-                          :checked="String(form.datasetId) === String(item.id)"
-                          @change="selectDataset(item.id)"
+                          type="checkbox"
+                          :checked="form.datasetIds.includes(Number(item.id))"
+                          @change="toggleDatasetSelection(item.id)"
                         >
                         <span class="small">{{ item.name }}</span>
                       </label>
                     </div>
                   </div>
 
-                  <div v-if="selectedDatasetItem" class="selected-dataset-list">
-                    <div class="selected-dataset-chip">
-                      <span class="selected-dataset-name">{{ selectedDatasetItem.name }}</span>
+                  <div v-if="selectedDatasetItems.length" class="selected-dataset-list">
+                    <div
+                      v-for="item in selectedDatasetItems"
+                      :key="`selected-dataset-${item.id}`"
+                      class="selected-dataset-chip"
+                    >
+                      <div class="selected-dataset-copy">
+                        <span class="selected-dataset-name">{{ item.name }}</span>
+                        <span class="selected-dataset-config-copy">{{ datasetConfigSummary(item.id) }}</span>
+                      </div>
+                      <button
+                        class="selected-dataset-settings"
+                        type="button"
+                        :aria-label="`Configure ${item.name}`"
+                        @click="openDatasetConfig(item.id)"
+                      >
+                        <i class="bi bi-gear"></i>
+                      </button>
                       <button
                         class="selected-dataset-remove"
                         type="button"
-                        :aria-label="`Remove ${selectedDatasetItem.name}`"
-                        @click="clearSelectedDataset"
+                        :aria-label="`Remove ${item.name}`"
+                        @click="removeSelectedDataset(item.id)"
                       >
                         <i class="bi bi-x-lg"></i>
                       </button>
@@ -176,13 +203,14 @@
                       <label class="small text-muted mb-1">Parallelism</label>
                       <input
                         v-model.number="form.parallelism"
+                        @input="markParallelismCustomized"
                         type="number"
                         class="form-control"
                         min="1"
                         max="32"
                         step="1"
                       >
-                      <div class="small text-muted mt-1">Controls concurrent synthesis threads per task.</div>
+                      <div class="small text-muted mt-1">Controls how many dataset synthesis tasks start in parallel. Each dataset task runs with one thread.</div>
                     </div>
                     <div class="col-12">
                       <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
@@ -261,7 +289,7 @@
                 <thead class="table-light">
                 <tr>
                   <th>Task ID</th>
-                  <th>Source</th>
+                  <th>Dataset</th>
                   <th>Progress</th>
                   <th>Created At</th>
                   <th>Updated At</th>
@@ -351,7 +379,7 @@
       </div>
     </div>
 
-    <div class="modal fade" tabindex="-1" ref="resultModalRef" aria-hidden="true">
+    <div class="modal fade reasoning-page-modal" tabindex="-1" ref="resultModalRef" aria-hidden="true">
       <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
@@ -367,6 +395,190 @@
         </div>
       </div>
     </div>
+
+    <div class="modal fade reasoning-page-modal reasoning-dataset-config-modal" tabindex="-1" ref="datasetConfigModalRef" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+              <h6 class="modal-title mb-1">Dataset Configuration</h6>
+              <p class="text-muted small mb-0">
+                {{ activeConfigDatasetItem ? activeConfigDatasetItem.name : 'Select files and map fields for this dataset.' }}
+              </p>
+            </div>
+            <button type="button" class="btn-close" @click="closeDatasetConfigModal"></button>
+          </div>
+          <div class="modal-body">
+            <div v-if="activeDatasetConfig" class="row g-3">
+              <div class="col-12 col-lg-4">
+                <section class="dataset-config-panel">
+                  <div class="dataset-config-panel-head">
+                    <div>
+                      <h6 class="mb-1">Files</h6>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                      <button class="btn btn-outline-secondary btn-sm" type="button" :disabled="activeDatasetConfig.isLoadingFiles || !activeDatasetConfig.availableFiles.length" @click="selectAllActiveDatasetFiles">
+                        Select All
+                      </button>
+                      <button class="btn btn-outline-secondary btn-sm" type="button" :disabled="activeDatasetConfig.isLoadingFiles || !activeDatasetConfig.selectedFilePaths.length" @click="clearActiveDatasetFiles">
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  <div v-if="activeDatasetConfig.isLoadingFiles" class="text-muted small py-3 d-flex align-items-center gap-2">
+                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                    Loading dataset files...
+                  </div>
+                  <div v-else-if="!activeDatasetConfig.availableFiles.length" class="text-muted small py-3">
+                    No previewable files were found for this dataset.
+                  </div>
+                  <div v-else class="dataset-config-file-list">
+                    <div
+                      v-for="file in activeDatasetConfig.availableFiles"
+                      :key="`config-file-${activeConfigDatasetId}-${file.path}`"
+                      class="dataset-config-file-item"
+                      :class="{ active: activeDatasetConfig.activePreviewPath === file.path }"
+                    >
+                      <input
+                        class="form-check-input mt-0"
+                        type="checkbox"
+                        :checked="activeDatasetConfig.selectedFilePaths.includes(file.path)"
+                        @change="toggleActiveDatasetFile(file.path)"
+                      >
+                      <button class="dataset-config-file-button" type="button" @click="activateActiveDatasetPreview(file.path)">
+                        <span class="dataset-config-file-name">{{ file.path }}</span>
+                      </button>
+                      <span
+                        class="dataset-config-file-status"
+                        :class="isFileMappingComplete(activeDatasetConfig, file.path) ? 'is-complete' : 'is-pending'"
+                        :title="isFileMappingComplete(activeDatasetConfig, file.path) ? 'Field mapping configured' : 'Field mapping pending'"
+                      >
+                        <i class="bi" :class="isFileMappingComplete(activeDatasetConfig, file.path) ? 'bi-check-circle-fill' : 'bi-question-circle-fill'"></i>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="small text-muted mt-2">
+                    {{ activeDatasetConfig.selectedFilePaths.length }} file(s) selected
+                  </div>
+                </section>
+              </div>
+
+              <div class="col-12 col-lg-8">
+                <section class="dataset-config-panel">
+                  <div class="dataset-config-panel-head">
+                    <div>
+                      <h6 class="mb-1">Sample Data</h6>
+                      <p class="text-muted small mb-0">Preview the selected file with up to 100 sample rows.</p>
+                    </div>
+                    <div v-if="activeConfigPreview" class="d-flex gap-2 flex-wrap">
+                      <span class="config-meta-chip">{{ activeConfigPreview.format || '-' }}</span>
+                      <span class="config-meta-chip">{{ activeConfigPreview.rowCount }} rows loaded</span>
+                    </div>
+                  </div>
+
+                  <div v-if="activeDatasetConfig.isLoadingPreview" class="text-muted small py-3 d-flex align-items-center gap-2">
+                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                    Loading sample data...
+                  </div>
+                  <div v-else-if="activeDatasetConfig.previewError" class="alert alert-warning py-2 px-3 mb-0">
+                    {{ activeDatasetConfig.previewError }}
+                  </div>
+                  <div v-else-if="!activeConfigPreview" class="text-muted small py-3">
+                    Click a file to inspect its sample rows.
+                  </div>
+                  <div v-else class="dataset-config-preview-wrap">
+                    <div class="small text-muted mb-2">
+                      {{ activeConfigPreview.path }}
+                    </div>
+                    <div class="table-responsive dataset-config-table-wrap">
+                      <table class="table table-sm align-middle mb-0 dataset-config-table">
+                        <thead class="table-light">
+                        <tr>
+                          <th
+                            v-for="column in activeConfigPreview.columns"
+                            :key="`preview-col-${column}`"
+                            class="dataset-config-th"
+                            :style="getPreviewColumnStyle(column)"
+                          >
+                            <div class="dataset-config-th-inner">
+                              <span class="dataset-config-th-label">{{ column }}</span>
+                              <span class="dataset-config-col-resizer" @mousedown="beginPreviewColumnResize($event, column)"></span>
+                            </div>
+                          </th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr v-for="(row, rowIndex) in activeConfigPreview.rows" :key="`preview-row-${rowIndex}`">
+                          <td
+                            v-for="column in activeConfigPreview.columns"
+                            :key="`preview-row-${rowIndex}-${column}`"
+                            class="dataset-config-td"
+                            :style="getPreviewColumnStyle(column)"
+                          >
+                            <div class="dataset-config-cell" :title="previewCell(row?.[column], 1000)">
+                              {{ previewCell(row?.[column]) }}
+                            </div>
+                          </td>
+                        </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="dataset-config-panel mt-3">
+                  <div class="dataset-config-panel-head">
+                    <div>
+                      <h6 class="mb-1">Field Mapping</h6>
+                      <p class="text-muted small mb-0">Map dataset columns to prompt and completion. The mapping is sent to the backend for distillation.</p>
+                    </div>
+                  </div>
+
+                  <div class="row g-2">
+                    <div v-if="promptPlaceholders.length === 0" class="col-12">
+                      <div class="text-muted small py-1">No placeholders detected in the prompt. Completion is still required.</div>
+                    </div>
+                    <div v-for="placeholder in promptPlaceholders" :key="`placeholder-${placeholder}`" class="col-12 col-md-6">
+                      <label class="small text-muted mb-1">{{ placeholder }}</label>
+                      <select :value="getActivePlaceholderMappingValue(placeholder)" class="form-select" @change="setActivePlaceholderMappingValue(placeholder, $event.target.value)">
+                        <option value="">Select a column</option>
+                        <option v-for="column in activeDatasetConfigColumns" :key="`${placeholder}-${column}`" :value="column">
+                          {{ column }}
+                        </option>
+                      </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="small text-muted mb-1">Completion</label>
+                      <select :value="activeCompletionField" class="form-select" @change="setActiveCompletionField($event.target.value)">
+                        <option value="">Select a column</option>
+                        <option v-for="column in activeDatasetConfigColumns" :key="`completion-column-${column}`" :value="column">
+                          {{ column }}
+                        </option>
+                      </select>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                      <button
+                        class="btn btn-outline-primary btn-sm"
+                        type="button"
+                        :disabled="!activeDatasetConfig || !activeDatasetConfig.selectedFilePaths.length"
+                        @click="applyActiveMappingToSelectedFiles"
+                      >
+                        Apply All
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" type="button" @click="closeDatasetConfigModal">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -378,6 +590,8 @@ import { formatAppDateTime } from '../../utils/datetime'
 import { chooseLocalDirectory } from '../../utils/desktop'
 import {
   createReasoningDistillationTask,
+  fetchDatasetFiles,
+  fetchDatasetPreview,
   fetchDatasets,
   fetchReasoningDistillationTask,
   fetchReasoningDistillationTaskResults,
@@ -391,6 +605,7 @@ const DEFAULT_STRATEGY = 'step-pruning'
 const DEFAULT_TARGET_MAX_TOKENS = 1024
 const DEFAULT_COMPRESSION_RATIO = 0.45
 const DEFAULT_KEEP_TOOL_TRACE = true
+const DATASET_PREVIEW_LIMIT = 100
 
 const isLoading = ref(false)
 const isSubmitting = ref(false)
@@ -409,10 +624,15 @@ const pageSize = 5
 const datasetDropdownOpen = ref(false)
 const datasetDropdownRef = ref(null)
 const resultModalRef = ref(null)
+const datasetConfigModalRef = ref(null)
 const resultModalTitle = ref('Result Detail')
 const resultModalContent = ref('')
 const advancedConfigOpen = ref(false)
+const datasetConfigMap = ref({})
+const activeConfigDatasetId = ref('')
+const parallelismCustomized = ref(false)
 let resultModalInstance = null
+let datasetConfigModalInstance = null
 
 const API_LLM_BASE_URL = 'https://api.openai.com/v1'
 const API_LLM_MODEL_NAME = 'gpt-4o-mini'
@@ -423,6 +643,8 @@ const DEFAULT_LLM_PARAMS_TEMPLATE = {
   top_p: 0.95,
   max_tokens: 4096
 }
+const PROMPT_PLACEHOLDER_TONES = ['tone-blue', 'tone-green', 'tone-amber', 'tone-rose', 'tone-cyan', 'tone-violet']
+const PROMPT_PLACEHOLDER_PATTERN = /\{([^{}]+)\}/g
 
 const buildDefaultPrompt = () => {
   return `You are generating one reasoning-synthesis training record for a data-analysis model.
@@ -433,11 +655,14 @@ Task requirements:
 3) Keep the reasoning concise, useful, and faithful to the source.
 4) Keep the final answer direct and plain.
 5) Do not add markdown fences or extra sections.
+
+Source question:
+{question}
 `
 }
 
 const form = ref({
-  datasetId: '',
+  datasetIds: [],
   prompt: buildDefaultPrompt(),
   modelProvider: 'api',
   llmApiKey: '',
@@ -479,15 +704,111 @@ const pagedTasks = computed(() => {
   return tasks.value.slice(start, start + pageSize)
 })
 
-const selectedDatasetItem = computed(() => {
-  const targetId = String(form.value.datasetId || '')
-  if (!targetId) return null
-  return datasetOptions.value.find((item) => String(item.id) === targetId) || null
+const selectedDatasetItems = computed(() => {
+  const selectedIds = Array.isArray(form.value.datasetIds) ? form.value.datasetIds : []
+  return selectedIds
+    .map((datasetId) => datasetOptions.value.find((item) => Number(item.id) === Number(datasetId)))
+    .filter(Boolean)
 })
 
+const activeDatasetConfig = computed(() => {
+  const key = String(activeConfigDatasetId.value || '').trim()
+  if (!key) return null
+  return datasetConfigMap.value[key] || null
+})
+
+const activeConfigDatasetItem = computed(() => {
+  const targetId = Number(activeConfigDatasetId.value || 0)
+  if (!Number.isFinite(targetId) || targetId <= 0) return null
+  return datasetOptions.value.find((item) => Number(item.id) === targetId) || null
+})
+
+const activeConfigPreview = computed(() => {
+  const config = activeDatasetConfig.value
+  if (!config || !config.activePreviewPath) return null
+  return config.previewCache?.[config.activePreviewPath] || null
+})
+
+const promptPlaceholders = computed(() => {
+  const promptText = String(form.value.prompt || '')
+  const matches = promptText.match(PROMPT_PLACEHOLDER_PATTERN) || []
+  const values = []
+  const seen = new Set()
+  matches.forEach((match) => {
+    const normalized = match.slice(1, -1).trim()
+    if (!normalized || seen.has(normalized)) return
+    seen.add(normalized)
+    values.push(normalized)
+  })
+  return values
+})
+
+const placeholderToneClass = (placeholder) => {
+  const normalized = String(placeholder || '').trim()
+  const index = promptPlaceholders.value.findIndex((item) => item === normalized)
+  return PROMPT_PLACEHOLDER_TONES[index >= 0 ? index % PROMPT_PLACEHOLDER_TONES.length : 0]
+}
+
+const activeDatasetConfigColumns = computed(() => {
+  const config = activeDatasetConfig.value
+  if (!config) return []
+  const values = new Set()
+
+  Object.values(config.previewCache || {}).forEach((preview) => {
+    ;(preview?.columns || []).forEach((column) => values.add(String(column)))
+  })
+  ;(activeConfigPreview.value?.columns || []).forEach((column) => values.add(String(column)))
+  Object.values(config.fileMappings || {}).forEach((mapping) => {
+    ;[
+      ...(Object.values(mapping?.placeholderMappings || {})),
+      mapping?.completionField
+    ].forEach((column) => {
+      const normalized = String(column || '').trim()
+      if (normalized) values.add(normalized)
+    })
+  })
+
+  return [...values]
+})
+
+const createDefaultFileMapping = () => ({
+  placeholderMappings: {},
+  completionField: ''
+})
+
+const readFileMappingState = (config, path) => {
+  if (!config) return createDefaultFileMapping()
+  const key = String(path || '').trim()
+  if (!key) return createDefaultFileMapping()
+  return config.fileMappings?.[key] || createDefaultFileMapping()
+}
+
+const getFileMappingState = (config, path) => {
+  if (!config) return createDefaultFileMapping()
+  const key = String(path || '').trim()
+  if (!key) return createDefaultFileMapping()
+  if (!config.fileMappings[key]) {
+    config.fileMappings = {
+      ...config.fileMappings,
+      [key]: createDefaultFileMapping()
+    }
+  }
+  return config.fileMappings[key]
+}
+
+const activeFileMapping = computed(() => {
+  const config = activeDatasetConfig.value
+  const path = String(config?.activePreviewPath || '').trim()
+  if (!config || !path) return createDefaultFileMapping()
+  return getFileMappingState(config, path)
+})
+
+const activeCompletionField = computed(() => String(activeFileMapping.value?.completionField || '').trim())
+
 const datasetDropdownLabel = computed(() => {
-  if (selectedDatasetItem.value) return selectedDatasetItem.value.name
-  return 'Select dataset'
+  if (selectedDatasetItems.value.length === 1) return selectedDatasetItems.value[0].name
+  if (selectedDatasetItems.value.length > 1) return `${selectedDatasetItems.value.length} datasets selected`
+  return 'Select datasets'
 })
 
 const setNotice = (message, type = 'info') => {
@@ -568,6 +889,10 @@ const previewText = (text, limit = 120) => {
 
 const markPromptCustomized = () => {}
 
+const markParallelismCustomized = () => {
+  parallelismCustomized.value = true
+}
+
 const resetPromptToTemplate = () => {
   form.value.prompt = buildDefaultPrompt()
 }
@@ -598,15 +923,88 @@ const browseSavePath = async () => {
   }
 }
 
-const selectDataset = (datasetId) => {
-  const nextId = Number(datasetId)
-  if (!Number.isFinite(nextId) || nextId <= 0) return
-  form.value.datasetId = String(nextId)
-  datasetDropdownOpen.value = false
+const createDefaultDatasetConfig = () => ({
+  selectedFilePaths: [],
+  availableFiles: [],
+  activePreviewPath: '',
+  previewCache: {},
+  isLoadingFiles: false,
+  isLoadingPreview: false,
+  previewError: '',
+  fileMappings: {},
+  previewColumnWidths: {}
+})
+
+const ensureDatasetConfig = (datasetId) => {
+  const key = String(Number(datasetId) || '')
+  if (!key) return null
+  if (!datasetConfigMap.value[key]) {
+    datasetConfigMap.value = {
+      ...datasetConfigMap.value,
+      [key]: createDefaultDatasetConfig()
+    }
+  }
+  return datasetConfigMap.value[key]
 }
 
-const clearSelectedDataset = () => {
-  form.value.datasetId = ''
+const previewCell = (value, limit = 120) => {
+  if (value == null) return ''
+  const text = typeof value === 'string'
+    ? value
+    : (() => {
+        try {
+          return JSON.stringify(value)
+        } catch {
+          return String(value)
+        }
+      })()
+  return text.length > limit ? `${text.slice(0, limit)}...` : text
+}
+
+const isFileMappingComplete = (config, path) => {
+  const mapping = readFileMappingState(config, path)
+  const completionReady = Boolean(String(mapping.completionField || '').trim())
+  const placeholdersReady = promptPlaceholders.value.every((placeholder) => Boolean(String(mapping.placeholderMappings?.[placeholder] || '').trim()))
+  return completionReady && placeholdersReady
+}
+
+const datasetConfigSummary = (datasetId) => {
+  const config = datasetConfigMap.value[String(datasetId)] || null
+  if (!config) return 'Not configured'
+  const selectedCount = config.selectedFilePaths.length
+  const configuredCount = config.selectedFilePaths.filter((path) => isFileMappingComplete(config, path)).length
+  if (selectedCount) {
+    return `${configuredCount}/${selectedCount} file(s) mapped`
+  }
+  return 'Not configured'
+}
+
+const toggleDatasetSelection = (datasetId) => {
+  const nextId = Number(datasetId)
+  if (!Number.isFinite(nextId) || nextId <= 0) return
+  const current = Array.isArray(form.value.datasetIds) ? form.value.datasetIds : []
+  if (current.includes(nextId)) {
+    removeSelectedDataset(nextId)
+    return
+  }
+  form.value.datasetIds = [...current, nextId]
+  ensureDatasetConfig(nextId)
+}
+
+const removeSelectedDataset = (datasetId) => {
+  const targetId = Number(datasetId)
+  form.value.datasetIds = (Array.isArray(form.value.datasetIds) ? form.value.datasetIds : []).filter((item) => Number(item) !== targetId)
+
+  const key = String(targetId)
+  if (datasetConfigMap.value[key]) {
+    const nextMap = { ...datasetConfigMap.value }
+    delete nextMap[key]
+    datasetConfigMap.value = nextMap
+  }
+
+  if (String(activeConfigDatasetId.value) === key) {
+    closeDatasetConfigModal()
+  }
 }
 
 const toggleDatasetDropdown = () => {
@@ -620,13 +1018,254 @@ const handleClickOutsideDatasetDropdown = (event) => {
   }
 }
 
+const loadDatasetConfigFiles = async (datasetId) => {
+  const config = ensureDatasetConfig(datasetId)
+  if (!config || config.isLoadingFiles) return
+
+  config.isLoadingFiles = true
+  config.previewError = ''
+  try {
+    const response = await fetchDatasetFiles(datasetId)
+    const data = response?.data || response || {}
+    config.availableFiles = Array.isArray(data.data_files)
+      ? data.data_files
+        .map((item) => ({
+          path: String(item?.path || ''),
+          format: String(item?.format || '')
+        }))
+        .filter((item) => item.path)
+      : []
+
+    config.selectedFilePaths = config.selectedFilePaths.filter((path) => config.availableFiles.some((item) => item.path === path))
+
+    if (!config.activePreviewPath && config.availableFiles.length) {
+      config.activePreviewPath = config.availableFiles[0].path
+    }
+  } catch (error) {
+    config.availableFiles = []
+    config.previewError = error?.message || 'Failed to load dataset files.'
+  } finally {
+    config.isLoadingFiles = false
+  }
+}
+
+const ensureDatasetPreviewLoaded = async (datasetId, path) => {
+  const config = ensureDatasetConfig(datasetId)
+  const targetPath = String(path || '').trim()
+  if (!config || !targetPath) return null
+  if (config.previewCache?.[targetPath]) return config.previewCache[targetPath]
+
+  config.isLoadingPreview = true
+  config.previewError = ''
+  try {
+    const response = await fetchDatasetPreview(datasetId, { path: targetPath, limit: DATASET_PREVIEW_LIMIT })
+    const payload = response?.data || response || {}
+    const preview = {
+      path: String(payload.path || targetPath),
+      format: String(payload.format || ''),
+      columns: Array.isArray(payload.columns) ? payload.columns.map((item) => String(item)) : [],
+      rows: Array.isArray(payload.rows) ? payload.rows : [],
+      rowCount: Number(payload.row_count || 0)
+    }
+    config.previewCache = {
+      ...config.previewCache,
+      [targetPath]: preview
+    }
+    return preview
+  } catch (error) {
+    config.previewError = error?.message || 'Failed to load dataset preview.'
+    return null
+  } finally {
+    config.isLoadingPreview = false
+  }
+}
+
+const getDatasetConfigModal = () => {
+  if (!datasetConfigModalRef.value) return null
+  datasetConfigModalInstance = Modal.getOrCreateInstance(datasetConfigModalRef.value)
+  return datasetConfigModalInstance
+}
+
+const openDatasetConfig = async (datasetId) => {
+  const targetId = Number(datasetId)
+  if (!Number.isFinite(targetId) || targetId <= 0) return
+  ensureDatasetConfig(targetId)
+  activeConfigDatasetId.value = String(targetId)
+  await loadDatasetConfigFiles(targetId)
+
+  const config = ensureDatasetConfig(targetId)
+  if (config?.activePreviewPath) {
+    await ensureDatasetPreviewLoaded(targetId, config.activePreviewPath)
+  }
+
+  getDatasetConfigModal()?.show()
+}
+
+const closeDatasetConfigModal = () => {
+  getDatasetConfigModal()?.hide()
+}
+
+const activateActiveDatasetPreview = async (path) => {
+  const datasetId = Number(activeConfigDatasetId.value || 0)
+  if (!Number.isFinite(datasetId) || datasetId <= 0) return
+  const config = ensureDatasetConfig(datasetId)
+  if (!config) return
+  config.activePreviewPath = String(path || '').trim()
+  await ensureDatasetPreviewLoaded(datasetId, config.activePreviewPath)
+}
+
+const toggleActiveDatasetFile = async (path) => {
+  const datasetId = Number(activeConfigDatasetId.value || 0)
+  if (!Number.isFinite(datasetId) || datasetId <= 0) return
+  const config = ensureDatasetConfig(datasetId)
+  const targetPath = String(path || '').trim()
+  if (!config || !targetPath) return
+
+  if (config.selectedFilePaths.includes(targetPath)) {
+    config.selectedFilePaths = config.selectedFilePaths.filter((item) => item !== targetPath)
+  } else {
+    config.selectedFilePaths = [...config.selectedFilePaths, targetPath]
+    await ensureDatasetPreviewLoaded(datasetId, targetPath)
+  }
+
+  if (!config.activePreviewPath) {
+    config.activePreviewPath = targetPath
+  }
+}
+
+const selectAllActiveDatasetFiles = async () => {
+  const datasetId = Number(activeConfigDatasetId.value || 0)
+  if (!Number.isFinite(datasetId) || datasetId <= 0) return
+  const config = ensureDatasetConfig(datasetId)
+  if (!config) return
+  config.selectedFilePaths = config.availableFiles.map((item) => item.path)
+  if (!config.activePreviewPath && config.selectedFilePaths.length) {
+    config.activePreviewPath = config.selectedFilePaths[0]
+  }
+  if (config.activePreviewPath) {
+    await ensureDatasetPreviewLoaded(datasetId, config.activePreviewPath)
+  }
+}
+
+const clearActiveDatasetFiles = () => {
+  const config = activeDatasetConfig.value
+  if (!config) return
+  config.selectedFilePaths = []
+}
+
+const getActivePlaceholderMappingValue = (placeholder) => {
+  const key = String(placeholder || '').trim()
+  if (!key) return ''
+  return String(activeFileMapping.value?.placeholderMappings?.[key] || '').trim()
+}
+
+const setActivePlaceholderMappingValue = (placeholder, value) => {
+  const config = activeDatasetConfig.value
+  const path = String(config?.activePreviewPath || '').trim()
+  const key = String(placeholder || '').trim()
+  if (!config || !path || !key) return
+
+  const mapping = getFileMappingState(config, path)
+  const nextPlaceholderMappings = {
+    ...(mapping.placeholderMappings || {})
+  }
+  const normalizedValue = String(value || '').trim()
+  if (normalizedValue) {
+    nextPlaceholderMappings[key] = normalizedValue
+  } else {
+    delete nextPlaceholderMappings[key]
+  }
+
+  config.fileMappings = {
+    ...config.fileMappings,
+    [path]: {
+      ...mapping,
+      placeholderMappings: nextPlaceholderMappings
+    }
+  }
+}
+
+const setActiveCompletionField = (value) => {
+  const config = activeDatasetConfig.value
+  const path = String(config?.activePreviewPath || '').trim()
+  if (!config || !path) return
+
+  const mapping = getFileMappingState(config, path)
+  config.fileMappings = {
+    ...config.fileMappings,
+    [path]: {
+      ...mapping,
+      completionField: String(value || '').trim()
+    }
+  }
+}
+
+const applyActiveMappingToSelectedFiles = () => {
+  const config = activeDatasetConfig.value
+  if (!config) return
+  const placeholderMappings = { ...(activeFileMapping.value?.placeholderMappings || {}) }
+  const completionField = String(activeFileMapping.value?.completionField || '').trim()
+  if (!config.selectedFilePaths.length) return
+
+  const nextMappings = { ...config.fileMappings }
+  config.selectedFilePaths.forEach((path) => {
+    nextMappings[path] = {
+      placeholderMappings: { ...placeholderMappings },
+      completionField
+    }
+  })
+  config.fileMappings = nextMappings
+}
+
+const setPreviewColumnWidth = (column, widthPx) => {
+  const config = activeDatasetConfig.value
+  if (!config) return
+  const normalizedColumn = String(column || '').trim()
+  const safeWidth = Math.max(140, Math.min(640, Number(widthPx) || 220))
+  config.previewColumnWidths = {
+    ...config.previewColumnWidths,
+    [normalizedColumn]: safeWidth
+  }
+}
+
+const getPreviewColumnStyle = (column) => {
+  const config = activeDatasetConfig.value
+  const width = Number(config?.previewColumnWidths?.[String(column || '').trim()] || 220)
+  return {
+    width: `${width}px`,
+    minWidth: `${width}px`
+  }
+}
+
+const beginPreviewColumnResize = (event, column) => {
+  event.preventDefault()
+  const startX = Number(event.clientX || 0)
+  const initialWidth = Number(activeDatasetConfig.value?.previewColumnWidths?.[String(column || '').trim()] || 220)
+
+  const handleMove = (moveEvent) => {
+    const delta = Number(moveEvent.clientX || 0) - startX
+    setPreviewColumnWidth(column, initialWidth + delta)
+  }
+
+  const handleUp = () => {
+    window.removeEventListener('mousemove', handleMove)
+    window.removeEventListener('mouseup', handleUp)
+  }
+
+  window.addEventListener('mousemove', handleMove)
+  window.addEventListener('mouseup', handleUp)
+}
+
 const refreshDatasetOptions = async () => {
   const response = await fetchDatasets()
   datasetOptions.value = mapDatasets(response)
   const validIds = new Set(datasetOptions.value.map((item) => String(item.id)))
-  if (form.value.datasetId && !validIds.has(String(form.value.datasetId))) {
-    form.value.datasetId = ''
-  }
+  form.value.datasetIds = (Array.isArray(form.value.datasetIds) ? form.value.datasetIds : [])
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && validIds.has(String(item)))
+  datasetConfigMap.value = Object.fromEntries(
+    Object.entries(datasetConfigMap.value).filter(([key]) => validIds.has(String(key)))
+  )
   applyRouteSelection()
 }
 
@@ -747,9 +1386,33 @@ const goNextPage = () => {
   currentPage.value += 1
 }
 
+const runTaskBatchWithConcurrency = async (datasetIds, limit, worker) => {
+  const queue = Array.isArray(datasetIds) ? [...datasetIds] : []
+  const normalizedLimit = Math.max(1, Math.min(32, Number(limit) || 1))
+  const settled = new Array(queue.length)
+  let cursor = 0
+
+  const runNext = async () => {
+    while (cursor < queue.length) {
+      const currentIndex = cursor
+      cursor += 1
+      const datasetId = queue[currentIndex]
+      try {
+        const value = await worker(datasetId, currentIndex)
+        settled[currentIndex] = { status: 'fulfilled', value }
+      } catch (error) {
+        settled[currentIndex] = { status: 'rejected', reason: error }
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(normalizedLimit, queue.length) }, () => runNext()))
+  return settled
+}
+
 const startTask = async () => {
-  if (!form.value.datasetId) {
-    setNotice('Please select a dataset.', 'error')
+  if (!Array.isArray(form.value.datasetIds) || !form.value.datasetIds.length) {
+    setNotice('Please select at least one dataset.', 'error')
     return
   }
   if (!form.value.prompt || !form.value.llmBaseUrl || !form.value.llmModelName) {
@@ -762,12 +1425,26 @@ const startTask = async () => {
   }
 
   isSubmitting.value = true
-  setNotice('Starting task...', 'info')
+  setNotice('Starting tasks...', 'info')
   try {
+    const selectedDatasetIds = form.value.datasetIds
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item) && item > 0)
+    const invalidDataset = selectedDatasetItems.value.find((item) => {
+      const config = datasetConfigMap.value[String(item.id)] || null
+      return !config
+        || !config.selectedFilePaths.length
+        || config.selectedFilePaths.some((path) => !isFileMappingComplete(config, path))
+    })
+    if (invalidDataset) {
+      setNotice(`Please finish file selection and field mapping for ${invalidDataset.name}.`, 'error')
+      return
+    }
+
     const llmParamsJson = normalizeLlmParamsJson(form.value.llmParamsJson)
-    const payload = {
+    const submissionParallelism = Math.max(1, Math.min(32, Number(form.value.parallelism) || selectedDatasetIds.length || 1))
+    const sharedPayload = {
       source_type: 'dataset',
-      source_dataset_id: Number(form.value.datasetId),
       prompt: form.value.prompt,
       strategy: DEFAULT_STRATEGY,
       target_max_tokens: DEFAULT_TARGET_MAX_TOKENS,
@@ -777,16 +1454,45 @@ const startTask = async () => {
       llm_api_key: form.value.modelProvider === 'local' ? 'local' : form.value.llmApiKey,
       llm_base_url: form.value.llmBaseUrl,
       llm_model_name: form.value.llmModelName,
-      parallelism: Math.max(1, Math.min(32, Number(form.value.parallelism) || 1)),
       save_path: String(form.value.savePath || '').trim() || undefined,
       llm_params_json: llmParamsJson
     }
-    const response = await createReasoningDistillationTask(payload)
-    const created = mapTask(response?.data || response)
-    selectedTaskId.value = created.id
-    selectedTask.value = created
+
+    const results = await runTaskBatchWithConcurrency(selectedDatasetIds, submissionParallelism, (datasetId) => {
+        const config = datasetConfigMap.value[String(datasetId)]
+        return createReasoningDistillationTask({
+          ...sharedPayload,
+          source_dataset_id: datasetId,
+          parallelism: 1,
+          selected_file_paths: [...config.selectedFilePaths],
+          file_mappings: config.selectedFilePaths.map((path) => ({
+            path,
+            placeholder_mappings: {
+              ...(getFileMappingState(config, path).placeholderMappings || {})
+            },
+            completion_field: getFileMappingState(config, path).completionField
+          }))
+        })
+      }
+    )
+
+    const successes = results
+      .filter((item) => item.status === 'fulfilled')
+      .map((item) => mapTask(item.value?.data || item.value))
+    const failures = results.filter((item) => item.status === 'rejected')
+
+    if (!successes.length) {
+      throw new Error(failures[0]?.reason?.message || 'backend error')
+    }
+
+    selectedTaskId.value = successes[0].id
+    selectedTask.value = successes[0]
     taskPanelMode.value = 'tasks'
-    setNotice('Reasoning Data Synthesis task started.', 'success')
+    if (failures.length) {
+      setNotice(`Started ${successes.length} task(s), ${failures.length} failed.`, 'error')
+    } else {
+      setNotice(`Started ${successes.length} reasoning synthesis task(s).`, 'success')
+    }
     await refreshTasks({ silent: true })
     await inspectTask(selectedTaskId.value, { silent: true })
   } catch (error) {
@@ -804,7 +1510,8 @@ const openGeneratedDataset = () => {
 const applyRouteSelection = () => {
   const datasetId = String(route.query.datasetId || '').trim()
   if (datasetId && datasetOptions.value.some((item) => String(item.id) === datasetId)) {
-    form.value.datasetId = datasetId
+    form.value.datasetIds = [Number(datasetId)]
+    ensureDatasetConfig(Number(datasetId))
   }
 }
 
@@ -881,6 +1588,15 @@ watch(
   }
 )
 
+watch(
+  () => (Array.isArray(form.value.datasetIds) ? form.value.datasetIds.length : 0),
+  (count) => {
+    if (parallelismCustomized.value) return
+    form.value.parallelism = Math.max(1, Number(count) || 1)
+  },
+  { immediate: true }
+)
+
 onMounted(async () => {
   document.addEventListener('click', handleClickOutsideDatasetDropdown)
   await refreshAll()
@@ -895,6 +1611,7 @@ onBeforeUnmount(() => {
     noticeTimer = null
   }
   resultModalInstance?.dispose()
+  datasetConfigModalInstance?.dispose()
   stopPolling()
 })
 </script>
@@ -918,6 +1635,74 @@ onBeforeUnmount(() => {
 .floating-notice {
   box-shadow: 0 8px 24px rgba(16, 36, 66, 0.18);
   border-radius: 10px;
+}
+
+.prompt-textarea {
+  min-height: 260px;
+  resize: vertical;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.prompt-placeholder-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.1rem 0;
+}
+
+.prompt-placeholder-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.prompt-placeholder-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.prompt-placeholder-chip.tone-blue {
+  color: #0b63d1;
+  background: rgba(11, 99, 209, 0.14);
+  border-color: rgba(11, 99, 209, 0.2);
+}
+
+.prompt-placeholder-chip.tone-green {
+  color: #18794e;
+  background: rgba(24, 121, 78, 0.14);
+  border-color: rgba(24, 121, 78, 0.2);
+}
+
+.prompt-placeholder-chip.tone-amber {
+  color: #9a5a00;
+  background: rgba(203, 132, 0, 0.16);
+  border-color: rgba(203, 132, 0, 0.22);
+}
+
+.prompt-placeholder-chip.tone-rose {
+  color: #b42363;
+  background: rgba(180, 35, 99, 0.14);
+  border-color: rgba(180, 35, 99, 0.2);
+}
+
+.prompt-placeholder-chip.tone-cyan {
+  color: #0f6d7a;
+  background: rgba(15, 109, 122, 0.14);
+  border-color: rgba(15, 109, 122, 0.2);
+}
+
+.prompt-placeholder-chip.tone-violet {
+  color: #6d3cc5;
+  background: rgba(109, 60, 197, 0.14);
+  border-color: rgba(109, 60, 197, 0.2);
 }
 
 .synthesis-main-row {
@@ -999,13 +1784,19 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  min-height: 34px;
+  min-height: 40px;
   max-width: 100%;
   padding: 0.38rem 0.45rem 0.38rem 0.7rem;
   border: 1px solid #dbe4f0;
-  border-radius: 999px;
+  border-radius: 14px;
   background: #f7faff;
   color: #2a4166;
+}
+
+.selected-dataset-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .selected-dataset-name {
@@ -1017,6 +1808,16 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
+.selected-dataset-config-copy {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  color: #6b7d96;
+}
+
+.selected-dataset-settings,
 .selected-dataset-remove {
   display: inline-flex;
   align-items: center;
@@ -1029,9 +1830,150 @@ onBeforeUnmount(() => {
   color: #466287;
 }
 
+.selected-dataset-settings:hover,
 .selected-dataset-remove:hover {
   background: rgba(42, 65, 102, 0.16);
   color: #223854;
+}
+
+.dataset-config-panel {
+  border: 1px solid #dbe4f0;
+  border-radius: 14px;
+  background: #fbfdff;
+  padding: 0.9rem;
+}
+
+.dataset-config-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.8rem;
+}
+
+.dataset-config-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.dataset-config-file-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #e2ebf7;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.dataset-config-file-item.active {
+  border-color: #95b6ea;
+  background: #f4f8ff;
+}
+
+.dataset-config-file-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  color: #23364f;
+}
+
+.dataset-config-file-name {
+  display: block;
+  font-size: 0.82rem;
+  word-break: break-word;
+}
+
+.dataset-config-file-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 0.95rem;
+}
+
+.dataset-config-file-status.is-complete {
+  color: #1f8c61;
+}
+
+.dataset-config-file-status.is-pending {
+  color: #c38a11;
+}
+
+.dataset-config-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dataset-config-table-wrap {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid #e2ebf7;
+  border-radius: 12px;
+}
+
+.dataset-config-table {
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+}
+
+.dataset-config-th,
+.dataset-config-td {
+  position: relative;
+}
+
+.dataset-config-th-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.dataset-config-th-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dataset-config-col-resizer {
+  flex: 0 0 8px;
+  align-self: stretch;
+  cursor: col-resize;
+  border-right: 2px solid #d2deef;
+  opacity: 0.8;
+}
+
+.dataset-config-col-resizer:hover {
+  border-right-color: #7fa2d9;
+}
+
+.dataset-config-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.8rem;
+}
+
+.config-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(42, 65, 102, 0.08);
+  color: #49617f;
+  font-size: 0.76rem;
+  font-weight: 600;
 }
 
 .save-path-row {
@@ -1151,5 +2093,13 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   background: #fbfdff;
   padding: 0.8rem;
+}
+
+:global(.reasoning-page-modal) {
+  z-index: 1400;
+}
+
+:global(.modal-backdrop) {
+  z-index: 1390;
 }
 </style>

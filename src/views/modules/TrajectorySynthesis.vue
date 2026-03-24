@@ -33,7 +33,7 @@
               <SandboxEnvironmentSelector
                 v-model="taskForm.sandboxEnvironmentId"
                 label="Environment"
-                description="Choose the server-side Python sandbox used for trajectory execution."
+                description="Choose the Python sandbox used for trajectory execution."
                 :disabled="isSubmitting"
               />
 

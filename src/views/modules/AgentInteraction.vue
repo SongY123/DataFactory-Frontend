@@ -5,7 +5,7 @@
         <SandboxEnvironmentSelector
           v-model="selectedSandboxEnvironmentId"
           label="Environment"
-          description="Choose the server-side Python sandbox used for this chat."
+          description="Choose the Python sandbox used for this chat."
           :disabled="isBusy"
         />
       </div>

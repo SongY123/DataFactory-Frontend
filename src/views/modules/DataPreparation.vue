@@ -158,9 +158,9 @@
           <div class="dataset-card-body">
             <div class="dataset-card-top">
               <div class="dataset-badges">
-                <span v-if="row.sourceKind !== 'upload'" class="dataset-source">{{ sourceKindLabel(row.sourceKind) }}</span>
                 <span class="dataset-badge-muted">#{{ row.id }}</span>
-                <span class="status-pill" :class="statusClass(row.status)">{{ formatStatusLabel(row.status) }}</span>
+                <span v-if="row.sourceKind !== 'upload'" class="dataset-source">{{ sourceKindLabel(row.sourceKind) }}</span>
+                <span v-if="shouldShowDatasetStatus(row.status)" class="status-pill" :class="statusClass(row.status)">{{ formatStatusLabel(row.status) }}</span>
               </div>
 
               <details class="action-menu" @click.stop>
@@ -177,13 +177,13 @@
             <div>
               <h5 class="dataset-name">{{ row.name }}</h5>
               <p class="dataset-summary">
-                {{ row.note || row.readmeExcerpt || 'No dataset description yet.' }}
+                {{ row.note }}
               </p>
             </div>
 
             <div v-if="row.isImporting" class="progress-block">
               <div class="progress-copy">
-                <span>Downloading HuggingFace dataset</span>
+                <span>Downloading Hugging Face dataset</span>
                 <span>{{ row.importProgress }}%</span>
               </div>
               <div class="progress">
@@ -329,7 +329,7 @@
                 <button class="btn btn-outline-secondary" type="button" @click="closeImportModal">Cancel</button>
                 <button class="btn btn-primary" type="submit" :disabled="isSubmittingUpload">
                   <span v-if="isSubmittingUpload" class="spinner-border spinner-border-sm me-1" role="status"></span>
-                  Upload
+                  Ok
                 </button>
               </div>
             </form>
@@ -376,7 +376,7 @@
                 <button class="btn btn-outline-secondary" type="button" @click="closeImportModal">Cancel</button>
                 <button class="btn btn-primary" type="submit" :disabled="isSubmittingHuggingFace">
                   <span v-if="isSubmittingHuggingFace" class="spinner-border spinner-border-sm me-1" role="status"></span>
-                  Start Import
+                  Import
                 </button>
               </div>
             </form>
@@ -513,6 +513,8 @@ const formatStatusLabel = (status) => {
   if (normalized === 'failed') return 'Failed'
   return String(normalized || '').replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
 }
+
+const shouldShowDatasetStatus = (status) => normalizeDatasetStatus(status) !== 'uploaded'
 
 const originSummary = (row) => {
   const parts = []

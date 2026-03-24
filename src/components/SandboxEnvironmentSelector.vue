@@ -39,7 +39,7 @@
         <div class="modal-header">
           <div>
             <h6 class="modal-title mb-1">Environment Management</h6>
-            <p class="text-muted small mb-0">Create or remove server-side Python sandbox environments. At least one environment must remain.</p>
+            <p class="text-muted small mb-0">Create or remove Python sandbox environments. At least one environment must remain.</p>
           </div>
           <button type="button" class="btn-close" aria-label="Close" @click="closeManager"></button>
         </div>
