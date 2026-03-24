@@ -1,9 +1,13 @@
+import { config } from '../config/global'
+
 const AUTH_FLAG_KEY = 'authLoggedIn'
 const AUTH_USER_KEY = 'authUsername'
 const AUTH_ROLE_KEY = 'authRole'
 
 let sessionCheckPromise = null
 let lastSessionValid = null
+
+const authApiUrl = (path) => `${config.apiBase}${path}`
 
 const parseError = async (res) => {
   const text = await res.text()
@@ -84,7 +88,7 @@ export async function syncAuthSession(force = false) {
 
   sessionCheckPromise = (async () => {
     try {
-      const res = await fetch('/api/auth/session', {
+      const res = await fetch(authApiUrl('/auth/session'), {
         method: 'GET',
         credentials: 'include'
       })
@@ -122,7 +126,7 @@ export async function syncAuthSession(force = false) {
 export async function login(username, password) {
   let res
   try {
-    res = await fetch('/api/auth/login', {
+    res = await fetch(authApiUrl('/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -153,13 +157,13 @@ export async function login(username, password) {
 }
 
 export async function logout() {
-  let res = await fetch('/api/auth/logout', {
+  let res = await fetch(authApiUrl('/auth/logout'), {
     method: 'POST',
     credentials: 'include'
   })
 
   if (!res.ok && res.status === 405) {
-    res = await fetch('/api/auth/logout', {
+    res = await fetch(authApiUrl('/auth/logout'), {
       method: 'GET',
       credentials: 'include'
     })
