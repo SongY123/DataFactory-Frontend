@@ -1,3 +1,5 @@
+import { config } from '../config/global.js'
+
 const AUTH_FLAG_KEY = 'authLoggedIn'
 const AUTH_USER_KEY = 'authUsername'
 const AUTH_ROLE_KEY = 'authRole'
@@ -18,6 +20,8 @@ const parseError = async (res) => {
 
 const backendUnavailableMessage = (action = 'Request') =>
   `${action} failed because the backend service is unavailable. Make sure DataFactory backend is running on http://127.0.0.1:8888.`
+
+const authApiUrl = (path) => `${config.apiBase}${path}`
 
 const normalizeRoleFromResponse = (body) => {
   const candidates = [
@@ -84,7 +88,7 @@ export async function syncAuthSession(force = false) {
 
   sessionCheckPromise = (async () => {
     try {
-      const res = await fetch('/api/auth/session', {
+      const res = await fetch(authApiUrl('/auth/session'), {
         method: 'GET',
         credentials: 'include'
       })
@@ -122,7 +126,7 @@ export async function syncAuthSession(force = false) {
 export async function login(username, password) {
   let res
   try {
-    res = await fetch('/api/auth/login', {
+    res = await fetch(authApiUrl('/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -153,13 +157,13 @@ export async function login(username, password) {
 }
 
 export async function logout() {
-  let res = await fetch('/api/auth/logout', {
+  let res = await fetch(authApiUrl('/auth/logout'), {
     method: 'POST',
     credentials: 'include'
   })
 
   if (!res.ok && res.status === 405) {
-    res = await fetch('/api/auth/logout', {
+    res = await fetch(authApiUrl('/auth/logout'), {
       method: 'GET',
       credentials: 'include'
     })
