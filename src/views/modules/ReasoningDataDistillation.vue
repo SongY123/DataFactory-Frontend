@@ -30,24 +30,46 @@
             <h6 class="card-title mb-3">Task Configuration</h6>
 
             <form class="d-flex flex-column gap-3 task-config-form" @submit.prevent="startTask">
-              <div class="d-flex align-items-center justify-content-between gap-2">
-                <label class="small text-muted mb-0">Prompt</label>
-                <button class="btn btn-link btn-sm py-0" type="button" @click="resetPromptToTemplate">Reset to Template</button>
+              <div class="prompt-toolbar">
+                <div class="prompt-tab-bar" role="tablist" aria-label="Reasoning prompt configuration tabs">
+                  <button
+                    class="prompt-tab-btn"
+                    :class="{ active: activePromptTab === 'synthesis' }"
+                    type="button"
+                    @click="activePromptTab = 'synthesis'"
+                  >
+                    Synthesis Prompt
+                  </button>
+                  <button
+                    class="prompt-tab-btn"
+                    :class="{ active: activePromptTab === 'evaluation' }"
+                    type="button"
+                    @click="activePromptTab = 'evaluation'"
+                  >
+                    Evaluation Prompt
+                  </button>
+                </div>
+                <button class="btn btn-link btn-sm py-0 prompt-reset-btn" type="button" @click="resetPromptToTemplate">Reset to Template</button>
+              </div>
+              <div v-if="activePromptTab === 'evaluation'" class="evaluation-prompt-toggle">
+                <label class="form-check mb-0">
+                  <input class="form-check-input" type="checkbox" v-model="form.evaluationEnabled">
+                  <span class="form-check-label">Enable</span>
+                </label>
               </div>
               <textarea
-                v-model="form.prompt"
+                v-model="activePromptValue"
                 @input="markPromptCustomized"
                 class="form-control prompt-textarea"
                 rows="11"
-                required
-                placeholder="Describe how the model should synthesize reasoning supervision for the selected dataset."
+                :required="activePromptTab === 'synthesis' || form.evaluationEnabled"
               ></textarea>
               <div class="prompt-placeholder-panel">
                 <div class="small text-muted">Placeholders</div>
-                <div v-if="promptPlaceholders.length" class="prompt-placeholder-list">
+                <div v-if="activePromptPlaceholders.length" class="prompt-placeholder-list">
                   <span
-                    v-for="placeholder in promptPlaceholders"
-                    :key="`prompt-chip-${placeholder}`"
+                    v-for="placeholder in activePromptPlaceholders"
+                    :key="`${activePromptTab}-prompt-chip-${placeholder}`"
                     class="prompt-placeholder-chip"
                     :class="placeholderToneClass(placeholder)"
                   >
@@ -278,8 +300,15 @@
               <h6 class="card-title mb-0">{{ taskPanelMode === 'tasks' ? 'Task List' : `Synthesis Results · Task ${selectedTaskId || '-'}` }}</h6>
               <div class="d-flex align-items-center gap-2">
                 <span class="small text-muted" v-if="taskPanelMode === 'tasks'">Latest {{ tasks.length }} tasks</span>
-                <button v-if="taskPanelMode === 'results'" class="btn btn-outline-secondary btn-sm" type="button" @click="backToTaskList">
-                  Back to Tasks
+                <button
+                  v-if="taskPanelMode === 'results'"
+                  class="btn btn-outline-secondary btn-sm task-back-btn"
+                  type="button"
+                  title="Back to Tasks"
+                  aria-label="Back to Tasks"
+                  @click="backToTaskList"
+                >
+                  <i class="bi bi-arrow-left"></i>
                 </button>
               </div>
             </div>
@@ -385,6 +414,70 @@
           </div>
           <div class="modal-footer">
             <button class="btn btn-outline-secondary" type="button" @click="closeResultModal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade reasoning-page-modal" tabindex="-1" ref="evaluationModalRef" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+              <h6 class="modal-title mb-1">{{ evaluationModalTitle }}</h6>
+              <p class="text-muted small mb-0">{{ evaluationModalSubtitle }}</p>
+            </div>
+            <button type="button" class="btn-close" @click="closeEvaluationModal"></button>
+          </div>
+          <div class="modal-body">
+            <div v-if="activeEvaluationScores" class="evaluation-chart-panel">
+              <div class="evaluation-chart-wrap">
+                <canvas ref="evaluationChartCanvasRef"></canvas>
+              </div>
+              <div class="evaluation-score-grid">
+                <div v-for="dimension in evaluationDimensions" :key="`evaluation-score-${dimension}`" class="evaluation-score-item">
+                  <span class="evaluation-score-label">{{ dimension }}</span>
+                  <span class="evaluation-score-value">{{ formatEvaluationScore(activeEvaluationScores?.[dimension]) }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-muted small py-3">No evaluation data is available for this sample.</div>
+            <div v-if="activeEvaluationDetailRows.length" class="evaluation-detail-panel mt-3">
+              <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                <div class="small text-muted">Sample Detail</div>
+                <span class="small text-muted">{{ evaluationDetailView === 'table' ? 'Table View' : 'JSON View' }}</span>
+              </div>
+
+              <div v-if="evaluationDetailView === 'table'" class="table-responsive evaluation-detail-table-wrap">
+                <table class="table table-sm align-middle mb-0 evaluation-detail-table">
+                  <thead class="table-light">
+                  <tr>
+                    <th class="evaluation-detail-field-col">Field</th>
+                    <th>Value</th>
+                  </tr>
+                  </thead>
+                  <tbody>
+                  <tr v-for="entry in activeEvaluationDetailRows" :key="`evaluation-detail-${entry.key}`">
+                    <td class="evaluation-detail-field">{{ entry.label }}</td>
+                    <td>
+                      <div class="evaluation-detail-value">{{ entry.value }}</div>
+                    </td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <pre v-else class="result-modal-pre mb-0">{{ activeEvaluationJsonText }}</pre>
+
+              <div class="d-flex justify-content-end mt-3">
+                <button class="btn btn-outline-secondary btn-sm" type="button" @click="toggleEvaluationDetailView">
+                  {{ evaluationDetailView === 'table' ? 'View JSON' : 'View Table' }}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" type="button" @click="closeEvaluationModal">Close</button>
           </div>
         </div>
       </div>
@@ -531,10 +624,10 @@
                   </div>
 
                   <div class="row g-2">
-                    <div v-if="promptPlaceholders.length === 0" class="col-12">
+                    <div v-if="datasetMappingPlaceholders.length === 0" class="col-12">
                       <div class="text-muted small py-1">No placeholders detected in the prompt. Completion is still required.</div>
                     </div>
-                    <div v-for="placeholder in promptPlaceholders" :key="`placeholder-${placeholder}`" class="col-12 col-md-6">
+                    <div v-for="placeholder in datasetMappingPlaceholders" :key="`placeholder-${placeholder}`" class="col-12 col-md-6">
                       <label class="small text-muted mb-1">{{ placeholder }}</label>
                       <select :value="getActivePlaceholderMappingValue(placeholder)" class="form-select" @change="setActivePlaceholderMappingValue(placeholder, $event.target.value)">
                         <option value="">Select a column</option>
@@ -577,9 +670,10 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
+import Chart from 'chart.js/auto'
 import { formatAppDateTime } from '../../utils/datetime'
 import SynthesisResultsTable from '../../components/SynthesisResultsTable.vue'
 import { chooseLocalDirectory, isElectronRuntime } from '../../utils/desktop'
@@ -590,7 +684,9 @@ import {
   fetchDatasets,
   fetchReasoningDistillationTask,
   fetchReasoningDistillationTaskResults,
-  fetchReasoningDistillationTasks
+  fetchReasoningDistillationTasks,
+  fetchUserPreference,
+  saveUserPreference
 } from '../../api/dataAgent'
 
 const route = useRoute()
@@ -601,6 +697,7 @@ const DEFAULT_TARGET_MAX_TOKENS = 1024
 const DEFAULT_COMPRESSION_RATIO = 0.45
 const DEFAULT_KEEP_TOOL_TRACE = true
 const DATASET_PREVIEW_LIMIT = 100
+const EVALUATION_DIMENSIONS = ['clarity', 'coherence', 'completeness', 'complexity', 'correctness', 'meaningfulness', 'difficulty']
 
 const isLoading = ref(false)
 const isSubmitting = ref(false)
@@ -620,34 +717,39 @@ const pageSize = 5
 const datasetDropdownOpen = ref(false)
 const datasetDropdownRef = ref(null)
 const resultModalRef = ref(null)
+const evaluationModalRef = ref(null)
+const evaluationChartCanvasRef = ref(null)
 const datasetConfigModalRef = ref(null)
 const resultModalTitle = ref('Result Detail')
 const resultModalContent = ref('')
+const evaluationModalTitle = ref('Evaluation Detail')
+const evaluationModalSubtitle = ref('')
+const activeEvaluationRow = ref(null)
+const evaluationDetailView = ref('table')
+const activePromptTab = ref('synthesis')
 const advancedConfigOpen = ref(false)
 const datasetConfigMap = ref({})
 const activeConfigDatasetId = ref('')
 const parallelismCustomized = ref(false)
+const isHydratingPreference = ref(false)
 let resultModalInstance = null
+let evaluationModalInstance = null
 let datasetConfigModalInstance = null
+let evaluationChartInstance = null
 
 const API_LLM_BASE_URL = 'https://api.openai.com/v1'
 const API_LLM_MODEL_NAME = 'gpt-4o-mini'
 const LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1'
 const LOCAL_LLM_MODEL_NAME = 'qwen2.5:7b-instruct'
+const REASONING_PREFERENCE_KEY = 'reasoning_synthesis'
 const DEFAULT_LLM_PARAMS_TEMPLATE = {
   temperature: 0.2,
   top_p: 0.95,
   max_tokens: 4096
 }
-const reasoningResultsColumns = [
-  { key: 'itemKey', label: 'Item', width: '16rem', expandedWidth: '20rem' },
-  { key: 'promptText', label: 'Prompt', width: '22rem', expandedWidth: '28rem' },
-  { key: 'reasoningText', label: 'Reasoning', width: '28rem', expandedWidth: '40rem' },
-  { key: 'answerText', label: 'Answer', width: '22rem', expandedWidth: '28rem' },
-  { key: 'status', label: 'Status', width: '8rem', kind: 'status' }
-]
 const PROMPT_PLACEHOLDER_TONES = ['tone-blue', 'tone-green', 'tone-amber', 'tone-rose', 'tone-cyan', 'tone-violet']
 const PROMPT_PLACEHOLDER_PATTERN = /\{([^{}]+)\}/g
+const PROMPT_PLACEHOLDER_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 const buildDefaultPrompt = () => {
   return `You are generating one reasoning-synthesis training record for a data-analysis model.
@@ -664,9 +766,51 @@ Source question:
 `
 }
 
+const buildDefaultEvaluationPrompt = () => {
+  return `You are a single-sample quality evaluator. Based on the input below, evaluate the quality of the output relative to the ground truth.
+
+question:
+{question}
+
+output:
+{output}
+
+ground truth:
+{completion}
+
+Please score the completion on the following 7 dimensions (1-10) and provide a brief reason for each score:
+- clarity: whether the expression is clear and easy to understand
+- coherence: whether the logic is internally consistent and flows naturally
+- completeness: whether the core information is fully covered without major omissions
+- complexity: whether it demonstrates an appropriate level of reasoning depth and information structure
+- correctness: whether the content is accurate and faithful to the ground truth
+- meaningfulness: whether the output is informative, useful, and aligned with the task goal
+- difficulty: the intrinsic difficulty of this question itself
+
+Requirements:
+- Be strict and avoid inflated scoring.
+- If the output deviates from the ground truth, lower correctness and completeness accordingly.
+- Difficulty refers to the difficulty of the sample itself, not the quality of the output.
+- Return valid JSON only.
+- Do not output any extra text.
+
+JSON schema:
+{
+  "clarity": 0,
+  "coherence": 0,
+  "completeness": 0,
+  "complexity": 0,
+  "correctness": 0,
+  "meaningfulness": 0,
+  "difficulty": 0
+}`
+}
+
 const form = ref({
   datasetIds: [],
-  prompt: buildDefaultPrompt(),
+  synthesisPrompt: buildDefaultPrompt(),
+  evaluationEnabled: false,
+  evaluationPrompt: buildDefaultEvaluationPrompt(),
   modelProvider: 'api',
   llmApiKey: '',
   llmBaseUrl: API_LLM_BASE_URL,
@@ -732,23 +876,135 @@ const activeConfigPreview = computed(() => {
   return config.previewCache?.[config.activePreviewPath] || null
 })
 
-const promptPlaceholders = computed(() => {
-  const promptText = String(form.value.prompt || '')
+const extractPromptPlaceholders = (promptText) => {
   const matches = promptText.match(PROMPT_PLACEHOLDER_PATTERN) || []
   const values = []
   const seen = new Set()
   matches.forEach((match) => {
     const normalized = match.slice(1, -1).trim()
-    if (!normalized || seen.has(normalized)) return
+    if (!normalized || !PROMPT_PLACEHOLDER_NAME_PATTERN.test(normalized) || seen.has(normalized)) return
     seen.add(normalized)
     values.push(normalized)
   })
   return values
+}
+
+const synthesisPromptPlaceholders = computed(() => extractPromptPlaceholders(String(form.value.synthesisPrompt || '')))
+const evaluationPromptPlaceholders = computed(() => extractPromptPlaceholders(String(form.value.evaluationPrompt || '')))
+const activePromptPlaceholders = computed(() => (
+  activePromptTab.value === 'evaluation'
+    ? evaluationPromptPlaceholders.value
+    : synthesisPromptPlaceholders.value
+))
+const datasetMappingPlaceholders = computed(() => {
+  const values = []
+  const seen = new Set()
+  ;[...synthesisPromptPlaceholders.value, ...evaluationPromptPlaceholders.value]
+    .filter((item) => !['output', 'completion'].includes(String(item || '').trim()))
+    .forEach((item) => {
+      const normalized = String(item || '').trim()
+      if (!normalized || seen.has(normalized)) return
+      seen.add(normalized)
+      values.push(normalized)
+    })
+  return values
 })
+const activePromptValue = computed({
+  get: () => (activePromptTab.value === 'evaluation' ? form.value.evaluationPrompt : form.value.synthesisPrompt),
+  set: (value) => {
+    if (activePromptTab.value === 'evaluation') {
+      form.value.evaluationPrompt = String(value ?? '')
+      return
+    }
+    form.value.synthesisPrompt = String(value ?? '')
+  }
+})
+const activePromptPlaceholder = computed(() => (
+  activePromptTab.value === 'evaluation'
+    ? 'Describe how the generated output should be evaluated against the mapped completion field.'
+    : 'Describe how the model should synthesize reasoning supervision for the selected dataset.'
+))
+const activeEvaluationScores = computed(() => activeEvaluationRow.value?.evaluation || null)
+const activeEvaluationDetailRows = computed(() => {
+  const row = activeEvaluationRow.value
+  if (!row) return []
+
+  const entries = [
+    { key: 'id', label: 'Result ID', value: row.id },
+    { key: 'itemKey', label: 'Item', value: row.itemKey },
+    { key: 'status', label: 'Status', value: row.status },
+    { key: 'promptText', label: 'Prompt', value: row.promptText },
+    { key: 'reasoningText', label: 'Reasoning', value: row.reasoningText },
+    { key: 'answerText', label: 'Answer', value: row.answerText }
+  ]
+
+  EVALUATION_DIMENSIONS.forEach((dimension) => {
+    entries.push({
+      key: dimension,
+      label: dimension.charAt(0).toUpperCase() + dimension.slice(1),
+      value: formatEvaluationScore(row?.evaluation?.[dimension])
+    })
+  })
+
+  if (String(row.evaluationErrorMessage || '').trim()) {
+    entries.push({
+      key: 'evaluationErrorMessage',
+      label: 'Evaluation Error',
+      value: String(row.evaluationErrorMessage || '').trim()
+    })
+  }
+
+  return entries
+})
+const activeEvaluationJsonText = computed(() => {
+  const row = activeEvaluationRow.value
+  if (!row) return '{}'
+  const payload = {
+    id: row.id,
+    itemKey: row.itemKey,
+    status: row.status,
+    promptText: row.promptText,
+    reasoningText: row.reasoningText,
+    answerText: row.answerText,
+    evaluation: row.evaluation && typeof row.evaluation === 'object' ? row.evaluation : {}
+  }
+  if (String(row.evaluationErrorMessage || '').trim()) {
+    payload.evaluationErrorMessage = String(row.evaluationErrorMessage || '').trim()
+  }
+  return JSON.stringify(payload, null, 2)
+})
+const reasoningResultsColumns = computed(() => {
+  const base = [
+    { key: 'itemKey', label: 'Item', width: '16rem', expandedWidth: '20rem' },
+    { key: 'promptText', label: 'Prompt', width: '22rem', expandedWidth: '28rem' },
+    { key: 'reasoningText', label: 'Reasoning', width: '28rem', expandedWidth: '40rem' },
+    { key: 'answerText', label: 'Answer', width: '22rem', expandedWidth: '28rem' },
+    { key: 'status', label: 'Status', width: '8rem', kind: 'status' }
+  ]
+  if (!selectedTask.value?.evaluationEnabled) return base
+
+  const evaluationColumns = EVALUATION_DIMENSIONS.map((dimension) => ({
+    key: dimension,
+    label: dimension,
+    width: '7rem',
+    expandedWidth: '8rem'
+  }))
+  evaluationColumns.push({
+    key: 'evaluationActionLabel',
+    label: 'Evaluation',
+    kind: 'action',
+    width: '10rem',
+    expandedWidth: '10rem',
+    isDisabled: (row) => !row?.hasEvaluation
+  })
+  return [...base, ...evaluationColumns]
+})
+const evaluationDimensions = EVALUATION_DIMENSIONS
 
 const placeholderToneClass = (placeholder) => {
   const normalized = String(placeholder || '').trim()
-  const index = promptPlaceholders.value.findIndex((item) => item === normalized)
+  const reference = activePromptPlaceholders.value.length ? activePromptPlaceholders.value : datasetMappingPlaceholders.value
+  const index = reference.findIndex((item) => item === normalized)
   return PROMPT_PLACEHOLDER_TONES[index >= 0 ? index % PROMPT_PLACEHOLDER_TONES.length : 0]
 }
 
@@ -868,6 +1124,7 @@ const mapTask = (item, index = 0) => {
     progress,
     progressText: totalItems > 0 ? `${processedItems}/${totalItems}` : `${processedItems}`,
     status: String(item?.status || 'pending').toLowerCase(),
+    evaluationEnabled: !!item?.evaluation_enabled,
     distilledSamples: Number(item?.distilled_samples || 0),
     avgTokens: Number(item?.avg_tokens || 0),
     generatedDatasetId: Number(item?.generated_dataset_id || item?.generated_dataset?.id || 0),
@@ -884,7 +1141,19 @@ const mapResults = (raw) => {
     promptText: String(item?.prompt_text || ''),
     reasoningText: String(item?.reasoning_text || ''),
     answerText: String(item?.answer_text || ''),
-    status: String(item?.status || 'unknown').toLowerCase()
+    evaluation: item?.evaluation && typeof item.evaluation === 'object' ? item.evaluation : {},
+    evaluationRawText: String(item?.evaluation_raw_text || ''),
+    evaluationErrorMessage: String(item?.evaluation_error_message || ''),
+    evaluationActionLabel: item?.evaluation ? 'View' : 'No Evaluation',
+    hasEvaluation: !!item?.evaluation,
+    status: String(item?.status || 'unknown').toLowerCase(),
+    clarity: item?.clarity,
+    coherence: item?.coherence,
+    completeness: item?.completeness,
+    complexity: item?.complexity,
+    correctness: item?.correctness,
+    meaningfulness: item?.meaningfulness,
+    difficulty: item?.difficulty
   }))
 }
 
@@ -907,8 +1176,66 @@ const markParallelismCustomized = () => {
   parallelismCustomized.value = true
 }
 
+const clampParallelism = (value) => Math.max(1, Math.min(32, Number(value) || 1))
+
+const buildPreferencePayload = () => ({
+  synthesisPrompt: String(form.value.synthesisPrompt || ''),
+  evaluationEnabled: !!form.value.evaluationEnabled,
+  evaluationPrompt: String(form.value.evaluationPrompt || ''),
+  activePromptTab: activePromptTab.value === 'evaluation' ? 'evaluation' : 'synthesis',
+  modelProvider: form.value.modelProvider === 'local' ? 'local' : 'api',
+  llmApiKey: String(form.value.llmApiKey || ''),
+  llmBaseUrl: String(form.value.llmBaseUrl || ''),
+  llmModelName: String(form.value.llmModelName || ''),
+  parallelism: clampParallelism(form.value.parallelism),
+  savePath: String(form.value.savePath || ''),
+  llmParamsJson: String(form.value.llmParamsJson || ''),
+  advancedConfigOpen: !!advancedConfigOpen.value
+})
+
+const hydratePreferencePayload = (value) => {
+  if (!value || typeof value !== 'object') return
+
+  isHydratingPreference.value = true
+  try {
+    const provider = value.modelProvider === 'local' ? 'local' : 'api'
+    form.value.modelProvider = provider
+    form.value.synthesisPrompt = String(value.synthesisPrompt || value.prompt || '').trim() || buildDefaultPrompt()
+    form.value.evaluationEnabled = !!value.evaluationEnabled
+    form.value.evaluationPrompt = String(value.evaluationPrompt || '').trim() || buildDefaultEvaluationPrompt()
+    activePromptTab.value = value.activePromptTab === 'evaluation' ? 'evaluation' : 'synthesis'
+    form.value.llmApiKey = String(value.llmApiKey || '')
+    form.value.llmBaseUrl = String(value.llmBaseUrl || '').trim() || (provider === 'local' ? LOCAL_LLM_BASE_URL : API_LLM_BASE_URL)
+    form.value.llmModelName = String(value.llmModelName || '').trim() || (provider === 'local' ? LOCAL_LLM_MODEL_NAME : API_LLM_MODEL_NAME)
+    form.value.parallelism = clampParallelism(value.parallelism)
+    form.value.savePath = String(value.savePath || '').trim()
+    form.value.llmParamsJson = String(value.llmParamsJson || '').trim() || JSON.stringify(DEFAULT_LLM_PARAMS_TEMPLATE, null, 2)
+    advancedConfigOpen.value = !!value.advancedConfigOpen
+    parallelismCustomized.value = value.parallelism != null
+  } finally {
+    isHydratingPreference.value = false
+  }
+}
+
+const loadStoredPreference = async () => {
+  try {
+    const response = await fetchUserPreference(REASONING_PREFERENCE_KEY)
+    hydratePreferencePayload(response?.data?.value ?? null)
+  } catch {
+    // preference loading is best-effort
+  }
+}
+
+const persistPreference = async () => {
+  await saveUserPreference(REASONING_PREFERENCE_KEY, buildPreferencePayload())
+}
+
 const resetPromptToTemplate = () => {
-  form.value.prompt = buildDefaultPrompt()
+  if (activePromptTab.value === 'evaluation') {
+    form.value.evaluationPrompt = buildDefaultEvaluationPrompt()
+    return
+  }
+  form.value.synthesisPrompt = buildDefaultPrompt()
 }
 
 const applyDefaultLlmParamsTemplate = () => {
@@ -982,7 +1309,7 @@ const previewCell = (value, limit = 120) => {
 const isFileMappingComplete = (config, path) => {
   const mapping = readFileMappingState(config, path)
   const completionReady = Boolean(String(mapping.completionField || '').trim())
-  const placeholdersReady = promptPlaceholders.value.every((placeholder) => Boolean(String(mapping.placeholderMappings?.[placeholder] || '').trim()))
+  const placeholdersReady = datasetMappingPlaceholders.value.every((placeholder) => Boolean(String(mapping.placeholderMappings?.[placeholder] || '').trim()))
   return completionReady && placeholdersReady
 }
 
@@ -1433,8 +1760,12 @@ const startTask = async () => {
     setNotice('Please select at least one dataset.', 'error')
     return
   }
-  if (!form.value.prompt || !form.value.llmBaseUrl || !form.value.llmModelName) {
+  if (!form.value.synthesisPrompt || !form.value.llmBaseUrl || !form.value.llmModelName) {
     setNotice('Please complete prompt and model fields before submitting.', 'error')
+    return
+  }
+  if (form.value.evaluationEnabled && !String(form.value.evaluationPrompt || '').trim()) {
+    setNotice('Please provide an evaluation prompt or disable evaluation.', 'error')
     return
   }
   if (form.value.modelProvider === 'api' && !form.value.llmApiKey) {
@@ -1460,10 +1791,17 @@ const startTask = async () => {
     }
 
     const llmParamsJson = normalizeLlmParamsJson(form.value.llmParamsJson)
-    const submissionParallelism = Math.max(1, Math.min(32, Number(form.value.parallelism) || selectedDatasetIds.length || 1))
+    try {
+      await persistPreference()
+    } catch {
+      // keep task submission usable even if preference persistence fails
+    }
+    const submissionParallelism = clampParallelism(Number(form.value.parallelism) || selectedDatasetIds.length || 1)
     const sharedPayload = {
       source_type: 'dataset',
-      prompt: form.value.prompt,
+      prompt: form.value.synthesisPrompt,
+      evaluation_enabled: !!form.value.evaluationEnabled,
+      evaluation_prompt: form.value.evaluationEnabled ? String(form.value.evaluationPrompt || '').trim() : undefined,
       strategy: DEFAULT_STRATEGY,
       target_max_tokens: DEFAULT_TARGET_MAX_TOKENS,
       compression_ratio: DEFAULT_COMPRESSION_RATIO,
@@ -1568,13 +1906,104 @@ const getResultModal = () => {
   return resultModalInstance
 }
 
+const getEvaluationModal = () => {
+  if (!evaluationModalRef.value) return null
+  evaluationModalInstance = Modal.getOrCreateInstance(evaluationModalRef.value)
+  return evaluationModalInstance
+}
+
+const formatEvaluationScore = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '-'
+  return numeric % 1 === 0 ? String(numeric) : numeric.toFixed(2)
+}
+
+const toggleEvaluationDetailView = () => {
+  evaluationDetailView.value = evaluationDetailView.value === 'table' ? 'json' : 'table'
+}
+
+const destroyEvaluationChart = () => {
+  if (evaluationChartInstance) {
+    evaluationChartInstance.destroy()
+    evaluationChartInstance = null
+  }
+}
+
+const renderEvaluationChart = async () => {
+  await nextTick()
+  const canvas = evaluationChartCanvasRef.value
+  const scores = activeEvaluationScores.value
+  if (!canvas || !scores) return
+  destroyEvaluationChart()
+  evaluationChartInstance = new Chart(canvas, {
+    type: 'radar',
+    data: {
+      labels: EVALUATION_DIMENSIONS,
+      datasets: [
+        {
+          label: 'Evaluation Scores',
+          data: EVALUATION_DIMENSIONS.map((key) => Number(scores?.[key] || 0)),
+          backgroundColor: 'rgba(23, 77, 148, 0.16)',
+          borderColor: '#174d94',
+          pointBackgroundColor: '#174d94',
+          pointBorderColor: '#ffffff',
+          pointHoverBackgroundColor: '#ffffff',
+          pointHoverBorderColor: '#174d94',
+          borderWidth: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          min: 0,
+          max: 10,
+          ticks: {
+            stepSize: 2
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.label}: ${formatEvaluationScore(context.raw)}`
+          }
+        }
+      }
+    }
+  })
+}
+
 const openResultField = (row, fieldLabel, fieldValue) => {
   resultModalTitle.value = `Result ${row?.id || ''} · ${String(fieldLabel || 'Detail')}`
   resultModalContent.value = String(fieldValue || '-')
   getResultModal()?.show()
 }
 
-const openReasoningResultCell = ({ row, column, value }) => {
+const openEvaluationModal = async (row) => {
+  activeEvaluationRow.value = row || null
+  evaluationDetailView.value = 'table'
+  evaluationModalTitle.value = `Result ${row?.id || ''} · Evaluation`
+  evaluationModalSubtitle.value = String(row?.itemKey || '').trim() || 'Reasoning evaluation scores'
+  getEvaluationModal()?.show()
+  await renderEvaluationChart()
+}
+
+const closeEvaluationModal = () => {
+  destroyEvaluationChart()
+  getEvaluationModal()?.hide()
+}
+
+const openReasoningResultCell = async ({ row, column, value }) => {
+  if (column?.key === 'evaluationActionLabel') {
+    await openEvaluationModal(row)
+    return
+  }
   openResultField(row, column?.label || 'Detail', value)
 }
 
@@ -1585,6 +2014,7 @@ const closeResultModal = () => {
 watch(
   () => form.value.modelProvider,
   (provider) => {
+    if (isHydratingPreference.value) return
     if (provider === 'local') {
       if (!form.value.llmBaseUrl || form.value.llmBaseUrl === API_LLM_BASE_URL) {
         form.value.llmBaseUrl = LOCAL_LLM_BASE_URL
@@ -1621,6 +2051,7 @@ watch(
 
 onMounted(async () => {
   document.addEventListener('click', handleClickOutsideDatasetDropdown)
+  await loadStoredPreference()
   await refreshAll()
   applyRouteSelection()
   if (autoRefresh.value) startPolling()
@@ -1632,7 +2063,9 @@ onBeforeUnmount(() => {
     clearTimeout(noticeTimer)
     noticeTimer = null
   }
+  destroyEvaluationChart()
   resultModalInstance?.dispose()
+  evaluationModalInstance?.dispose()
   datasetConfigModalInstance?.dispose()
   stopPolling()
 })
@@ -1790,6 +2223,66 @@ onBeforeUnmount(() => {
   overflow: auto;
   padding: 0.45rem 0.5rem;
   box-shadow: 0 10px 24px rgba(32, 55, 90, 0.12);
+}
+
+.prompt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.prompt-tab-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #f7faff;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.prompt-tab-btn {
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #5f7392;
+  padding: 0.38rem 0.68rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.prompt-tab-btn.active {
+  background: #ffffff;
+  color: #174d94;
+  box-shadow: 0 6px 16px rgba(23, 77, 148, 0.1);
+}
+
+.prompt-reset-btn {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.evaluation-prompt-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.task-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
 }
 
 .dataset-select-item {
@@ -2157,6 +2650,84 @@ onBeforeUnmount(() => {
   padding: 0.8rem;
 }
 
+.evaluation-chart-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.evaluation-chart-wrap {
+  position: relative;
+  min-height: 360px;
+  border: 1px solid #dbe4f0;
+  border-radius: 14px;
+  background: #fbfdff;
+  padding: 0.85rem;
+}
+
+.evaluation-score-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+}
+
+.evaluation-score-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.evaluation-score-label {
+  text-transform: capitalize;
+  color: #49617f;
+  font-size: 0.84rem;
+}
+
+.evaluation-score-value {
+  color: #174d94;
+  font-weight: 700;
+}
+
+.evaluation-detail-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.evaluation-detail-table-wrap {
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #ffffff;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.evaluation-detail-table {
+  table-layout: fixed;
+}
+
+.evaluation-detail-field-col {
+  width: 9.5rem;
+}
+
+.evaluation-detail-field {
+  color: #49617f;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.evaluation-detail-value {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
 :global(.reasoning-page-modal) {
   z-index: 1400;
 }
@@ -2169,6 +2740,10 @@ onBeforeUnmount(() => {
   .task-progress-head {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .evaluation-chart-panel {
+    grid-template-columns: 1fr;
   }
 }
 </style>

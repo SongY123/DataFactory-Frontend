@@ -4,13 +4,14 @@ import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const FRONTEND_ROOT = path.resolve(__dirname, '..')
 const BACKEND_ROOT = path.resolve(FRONTEND_ROOT, '..', 'DataFactory')
 const FRONTEND_DIST_ENTRY = path.resolve(FRONTEND_ROOT, 'dist', 'index.html')
+const APP_ICON_PATH = path.resolve(FRONTEND_ROOT, 'src', 'assets', 'img', 'icon.svg')
 
 const API_HOST = process.env.DATAFACTORY_API_HOST || '127.0.0.1'
 const API_PORT = Number(process.env.DATAFACTORY_API_PORT || '8888') || 8888
@@ -22,6 +23,7 @@ const USE_DEV_SERVER = process.env.DATAFACTORY_ELECTRON_DEV === '1'
 let mainWindow = null
 let backendProcess = null
 let backendShutdownTimer = null
+let appIcon = null
 
 const resolvePythonCommand = () => {
   const candidates = [
@@ -130,6 +132,7 @@ const createMainWindow = async () => {
     minWidth: 1180,
     minHeight: 760,
     backgroundColor: '#f4f6f8',
+    icon: existsSync(APP_ICON_PATH) ? APP_ICON_PATH : undefined,
     webPreferences: {
       preload: path.resolve(__dirname, 'preload.mjs'),
       contextIsolation: true,
@@ -166,6 +169,15 @@ const createMainWindow = async () => {
 
 app.whenReady().then(async () => {
   process.env.DATAFACTORY_API_BASE = API_BASE
+  if (existsSync(APP_ICON_PATH)) {
+    const loadedIcon = nativeImage.createFromPath(APP_ICON_PATH)
+    if (!loadedIcon.isEmpty()) {
+      appIcon = loadedIcon
+      if (process.platform === 'darwin') {
+        app.dock.setIcon(appIcon)
+      }
+    }
+  }
   startBackend()
   await waitForBackend()
   registerIpc()

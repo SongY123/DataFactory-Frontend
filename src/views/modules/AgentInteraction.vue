@@ -429,7 +429,7 @@
         <div class="modal-header">
           <div>
             <h6 class="modal-title mb-1">Model Configuration</h6>
-            <p class="text-muted small mb-0">Store local or API model configs in this browser and choose which one answers the next prompt.</p>
+            <p class="text-muted small mb-0">Save one reusable local vLLM or API configuration for interactive testing.</p>
           </div>
           <button type="button" class="btn-close" @click="closeModelConfigModal"></button>
         </div>
@@ -437,112 +437,74 @@
         <div class="modal-body">
           <div v-if="modelFormError" class="alert alert-danger py-2 px-3" role="alert">{{ modelFormError }}</div>
 
-          <div class="row g-4">
-            <div class="col-lg-7">
-              <div class="mb-3">
-                <label class="form-label small text-muted mb-2">Connection Type</label>
-                <div class="mode-toggle-group">
-                  <button
-                    class="btn btn-sm"
-                    :class="modelForm.mode === 'local' ? 'btn-dark' : 'btn-outline-secondary'"
-                    type="button"
-                    @click="setModelFormMode('local')"
-                  >
-                    Local
-                  </button>
-                  <button
-                    class="btn btn-sm"
-                    :class="modelForm.mode === 'api' ? 'btn-dark' : 'btn-outline-secondary'"
-                    type="button"
-                    @click="setModelFormMode('api')"
-                  >
-                    API
-                  </button>
-                </div>
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label small text-muted mb-1">Display Name</label>
-                <input v-model="modelForm.name" type="text" class="form-control" maxlength="128" placeholder="Example: Local Qwen 30B">
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label small text-muted mb-1">Model Name</label>
-                <input v-model="modelForm.model_name" type="text" class="form-control" maxlength="200" placeholder="qwen3-coder:30b-a3b-fp16 / gpt-4.1-mini">
-              </div>
-
-              <template v-if="modelForm.mode === 'local'">
-                <div class="mb-3">
-                  <label class="form-label small text-muted mb-1">Local Host</label>
-                  <input v-model="modelForm.host" type="text" class="form-control" maxlength="500" placeholder="http://127.0.0.1:11434">
-                </div>
-                <small class="text-muted d-block">Local mode uses the Ollama backend path and sends `host + model_name` with the chat request.</small>
-              </template>
-
-              <template v-else>
-                <div class="mb-3">
-                  <label class="form-label small text-muted mb-1">API Key</label>
-                  <input v-model="modelForm.api_key" type="password" class="form-control" maxlength="500" placeholder="sk-...">
-                </div>
-                <div class="mb-3">
-                  <label class="form-label small text-muted mb-1">Base URL</label>
-                  <input v-model="modelForm.base_url" type="text" class="form-control" maxlength="500" placeholder="Optional: https://api.openai.com/v1">
-                </div>
-                <div class="mb-3">
-                  <label class="form-label small text-muted mb-1">Organization</label>
-                  <input v-model="modelForm.organization" type="text" class="form-control" maxlength="200" placeholder="Optional organization id">
-                </div>
-                <small class="text-muted d-block">API mode uses an OpenAI-compatible chat client. Leave Base URL empty for the default OpenAI endpoint.</small>
-              </template>
-            </div>
-
-            <div class="col-lg-5">
-              <div class="saved-model-panel">
-                <div class="d-flex align-items-center justify-content-between mb-3">
-                  <div>
-                    <h6 class="mb-1">Saved Models</h6>
-                    <small class="text-muted">Stored in your current browser only.</small>
-                  </div>
-                  <button class="btn btn-sm btn-outline-secondary" type="button" @click="startCreateModel()">New</button>
-                </div>
-
-                <div v-if="savedModelConfigs.length === 0" class="empty-saved-models text-muted">
-                  No custom model configs yet. Use the form to add a local or API model.
-                </div>
-
-                <div
-                  v-for="item in savedModelConfigs"
-                  :key="item.id"
-                  class="saved-model-card"
-                  :class="{ active: item.id === activeModelId }"
-                >
-                  <div class="saved-model-card-head">
-                    <div>
-                      <div class="saved-model-name">{{ item.name }}</div>
-                      <div class="saved-model-meta">{{ item.mode === 'local' ? 'Local' : 'API' }} | {{ item.model_name }}</div>
-                    </div>
-                    <span class="badge text-bg-light">{{ item.mode === 'local' ? 'Local' : 'API' }}</span>
-                  </div>
-
-                  <div class="saved-model-endpoint text-muted">
-                    {{ item.mode === 'local' ? item.host : (item.base_url || 'Default OpenAI endpoint') }}
-                  </div>
-
-                  <div class="saved-model-actions">
-                    <button class="btn btn-sm btn-outline-primary" type="button" @click="useModelConfig(item.id)">Use</button>
-                    <button class="btn btn-sm btn-outline-secondary" type="button" @click="editModelConfig(item.id)">Edit</button>
-                    <button class="btn btn-sm btn-outline-danger" type="button" :disabled="isBusy" @click="deleteModelConfig(item.id)">Delete</button>
-                  </div>
-                </div>
-              </div>
+          <div class="mb-3">
+            <label class="form-label small text-muted mb-2">Connection Type</label>
+            <div class="mode-toggle-group">
+              <button
+                class="btn btn-sm"
+                :class="modelForm.mode === 'local' ? 'btn-dark' : 'btn-outline-secondary'"
+                type="button"
+                @click="setModelFormMode('local')"
+              >
+                Local
+              </button>
+              <button
+                class="btn btn-sm"
+                :class="modelForm.mode === 'api' ? 'btn-dark' : 'btn-outline-secondary'"
+                type="button"
+                @click="setModelFormMode('api')"
+              >
+                API
+              </button>
             </div>
           </div>
+
+          <div class="mb-3">
+            <label class="form-label small text-muted mb-1">Display Name</label>
+            <input v-model="modelForm.name" type="text" class="form-control" maxlength="128" placeholder="Example: Local Qwen vLLM">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small text-muted mb-1">Model Name</label>
+            <input v-model="modelForm.model_name" type="text" class="form-control" maxlength="200" placeholder="Qwen2.5-1.5B-Instruct">
+          </div>
+
+          <template v-if="modelForm.mode === 'local'">
+            <div class="mb-3">
+              <label class="form-label small text-muted mb-1">Local Model Path</label>
+              <div class="d-flex align-items-center gap-2">
+                <input v-model="modelForm.model_path" type="text" class="form-control" maxlength="2000" placeholder="/path/to/local/model">
+                <button class="btn btn-outline-secondary" type="button" @click="browseLocalModelPath">Browse</button>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small text-muted mb-1">Local Host</label>
+              <input v-model="modelForm.host" type="text" class="form-control" maxlength="500" placeholder="http://127.0.0.1:8000/v1">
+            </div>
+            <small class="text-muted d-block">Local mode connects to a vLLM OpenAI-compatible endpoint and stores the selected model path for launch context.</small>
+          </template>
+
+          <template v-else>
+            <div class="mb-3">
+              <label class="form-label small text-muted mb-1">API Key</label>
+              <input v-model="modelForm.api_key" type="password" class="form-control" maxlength="500" placeholder="sk-...">
+            </div>
+            <div class="mb-3">
+              <label class="form-label small text-muted mb-1">Base URL</label>
+              <input v-model="modelForm.base_url" type="text" class="form-control" maxlength="500" placeholder="Optional: https://api.openai.com/v1">
+            </div>
+            <div class="mb-0">
+              <label class="form-label small text-muted mb-1">Organization</label>
+              <input v-model="modelForm.organization" type="text" class="form-control" maxlength="200" placeholder="Optional organization id">
+            </div>
+            <small class="text-muted d-block mt-2">API mode uses an OpenAI-compatible chat client. Leave Base URL empty for the default endpoint.</small>
+          </template>
         </div>
 
         <div class="modal-footer">
           <button class="btn btn-outline-secondary" type="button" @click="closeModelConfigModal">Close</button>
           <button class="btn btn-dark" type="button" @click="saveModelConfig">
-            {{ editingModelId ? 'Update Model' : 'Save Model' }}
+            Save Configuration
           </button>
         </div>
       </div>
@@ -562,15 +524,21 @@ import {
   fetchAgenticSynthesisTasks,
   fetchAgentAssetTree,
   fetchDatasets,
+  fetchUserPreference,
   fetchReasoningDistillationTasks,
+  saveUserPreference,
   streamAgentInteractionChat,
   uploadAgentInteractionFile
 } from '../../api/dataAgent'
 import { config } from '../../config/global'
+import { chooseLocalDirectory, isElectronRuntime } from '../../utils/desktop'
 
 const SERVER_DEFAULT_MODEL_ID = 'server-default'
-const MODEL_CONFIGS_STORAGE_KEY = 'datafactory.agentInteraction.modelConfigs.v1'
-const ACTIVE_MODEL_STORAGE_KEY = 'datafactory.agentInteraction.activeModelId.v1'
+const SAVED_MODEL_ID = 'saved-model'
+const INTERACTIVE_PREFERENCE_KEY = 'interactive_testing'
+const LOCAL_VLLM_ENDPOINT = 'http://127.0.0.1:8000/v1'
+const LOCAL_VLLM_MODEL_NAME = 'Qwen2.5-1.5B-Instruct'
+const DEFAULT_REMOTE_MODEL_NAME = 'gpt-4o-mini'
 const MAX_CONVERSATION_PAGES = 6
 const CONVERSATION_TITLE_LIMIT = 30
 const route = useRoute()
@@ -583,8 +551,9 @@ const modelConfigModalRef = ref(null)
 const modelPickerRef = ref(null)
 const conversationPickerRef = ref(null)
 const pendingFolderInputRef = ref(null)
+const canBrowseLocalDirectory = isElectronRuntime()
 const selectedSandboxEnvironmentId = ref('')
-const hasInitializedSandboxEnvironment = ref(false)
+const isHydratingInteractivePreference = ref(false)
 const platformDatasets = ref([])
 const platformTrajectoryTasks = ref([])
 const platformDistillationTasks = ref([])
@@ -605,9 +574,8 @@ const isAssetsLoading = ref(false)
 const pendingFolderDraft = ref(null)
 const pendingUploadFolderPath = ref('')
 const isUploading = ref(false)
-const savedModelConfigs = ref(loadStoredModelConfigs())
-const activeModelId = ref(loadStoredActiveModelId(savedModelConfigs.value))
-const editingModelId = ref('')
+const savedModelConfig = ref(null)
+const activeModelId = ref(SERVER_DEFAULT_MODEL_ID)
 const modelFormError = ref('')
 const modelForm = ref(createEmptyModelForm())
 const isModelMenuOpen = ref(false)
@@ -652,7 +620,7 @@ const conversationTabsSummary = computed(() => `${conversationPages.value.length
 const canCreateConversation = computed(() => conversationPages.value.length < MAX_CONVERSATION_PAGES && !isUploading.value)
 
 const isBusy = computed(() => isUploading.value || isAnyConversationStreaming.value)
-const assetStatsText = computed(() => `${assetSummary.value.folder_count || 0} folders, ${assetSummary.value.file_count || 0} files saved for your account`)
+const assetStatsText = computed(() => `${assetSummary.value.folder_count || 0} folders, ${assetSummary.value.file_count || 0} files saved`)
 const selectedFileAsset = computed(() => findAssetNodeByPath(assetTreeItems.value, selectedAssetPath.value, 'file'))
 const checkedFilePathSet = computed(() => new Set(checkedFilePaths.value))
 const allFilePaths = computed(() =>
@@ -695,35 +663,37 @@ const currentTargetFolderPath = computed(() => {
 })
 const currentTargetFolderLabel = computed(() => currentTargetFolderPath.value || 'Root')
 const flattenedAssetRows = computed(() => flattenVisibleAssetRows(assetTreeItems.value, pendingFolderDraft.value))
-const activeModelConfig = computed(() => savedModelConfigs.value.find((item) => item.id === activeModelId.value) || null)
-const modelOptions = computed(() => [
-  {
-    id: SERVER_DEFAULT_MODEL_ID,
-    label: 'Server Default',
-    meta: 'Use backend default model',
-    icon: 'bi-stars',
-    tone: 'default'
-  },
-  ...savedModelConfigs.value.map((item) => ({
-    id: item.id,
-    label: item.name,
-    meta: item.model_name,
-    icon: item.mode === 'local' ? 'bi-cpu-fill' : 'bi-cloud-fill',
-    tone: item.mode === 'local' ? 'local' : 'api'
-  }))
-])
-const activeModelOption = computed(() => modelOptions.value.find((item) => item.id === activeModelId.value) || modelOptions.value[0])
+const activeModelConfig = computed(() => {
+  if (activeModelId.value !== SAVED_MODEL_ID) return null
+  return savedModelConfig.value || null
+})
+const modelOptions = computed(() => {
+  const options = [
+    {
+      id: SERVER_DEFAULT_MODEL_ID,
+      label: 'Server Default',
+      meta: 'Use backend default model',
+      icon: 'bi-stars',
+      tone: 'default'
+    }
+  ]
 
-function canUseStorage() {
-  return typeof window !== 'undefined' && !!window.localStorage
-}
+  if (savedModelConfig.value) {
+    options.push({
+      id: SAVED_MODEL_ID,
+      label: savedModelConfig.value.name,
+      meta: `${savedModelConfig.value.mode === 'local' ? 'Local' : 'API'} · ${savedModelConfig.value.model_name}`,
+      icon: savedModelConfig.value.mode === 'local' ? 'bi-cpu-fill' : 'bi-cloud-fill',
+      tone: savedModelConfig.value.mode === 'local' ? 'local' : 'api'
+    })
+  }
+
+  return options
+})
+const activeModelOption = computed(() => modelOptions.value.find((item) => item.id === activeModelId.value) || modelOptions.value[0])
 
 function makeWorkspaceId() {
   return `agent-ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function createModelId() {
-  return `model-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function makeConversationId() {
@@ -887,14 +857,10 @@ function getAgentIconClass(agent) {
   return 'bi-robot text-primary'
 }
 
-function normalizeLocalHost(value) {
+function normalizeEndpoint(value) {
   const text = cleanString(value)
   if (!text) return ''
-  const normalized = text.replace(/\/+$/, '')
-  if (/\/v1$/i.test(normalized)) {
-    return normalized.replace(/\/v1$/i, '')
-  }
-  return normalized
+  return text.replace(/\/+$/, '')
 }
 
 function normalizeStoredModelConfig(raw) {
@@ -904,61 +870,87 @@ function normalizeStoredModelConfig(raw) {
   if (!modelName) return null
 
   const normalized = {
-    id: cleanString(raw.id) || createModelId(),
+    id: SAVED_MODEL_ID,
     name: cleanString(raw.name) || `${mode === 'local' ? 'Local' : 'API'} ${modelName}`,
     mode,
-    provider: mode === 'local' ? 'ollama' : 'openai',
+    provider: 'openai',
     model_name: modelName,
-    host: mode === 'local' ? normalizeLocalHost(raw.host) || 'http://127.0.0.1:11434' : '',
+    host: mode === 'local' ? normalizeEndpoint(raw.host || raw.base_url || raw.baseUrl) || LOCAL_VLLM_ENDPOINT : '',
+    model_path: mode === 'local' ? cleanString(raw.model_path || raw.modelPath) : '',
     api_key: mode === 'api' ? cleanString(raw.api_key || raw.apiKey) : '',
-    base_url: mode === 'api' ? cleanString(raw.base_url || raw.baseUrl) : '',
+    base_url: mode === 'api' ? normalizeEndpoint(raw.base_url || raw.baseUrl) : '',
     organization: mode === 'api' ? cleanString(raw.organization) : '',
-    client_type: mode === 'api' ? 'openai' : ''
+    client_type: 'openai'
   }
 
   if (mode === 'api' && !normalized.api_key) return null
   return normalized
 }
 
-function loadStoredModelConfigs() {
-  if (!canUseStorage()) return []
-  try {
-    const raw = window.localStorage.getItem(MODEL_CONFIGS_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed.map((item) => normalizeStoredModelConfig(item)).filter(Boolean)
-  } catch {
-    return []
-  }
-}
-
-function persistModelConfigs() {
-  if (!canUseStorage()) return
-  window.localStorage.setItem(MODEL_CONFIGS_STORAGE_KEY, JSON.stringify(savedModelConfigs.value))
-}
-
-function loadStoredActiveModelId(configs) {
-  if (!canUseStorage()) return SERVER_DEFAULT_MODEL_ID
-  const stored = cleanString(window.localStorage.getItem(ACTIVE_MODEL_STORAGE_KEY))
-  if (!stored) return SERVER_DEFAULT_MODEL_ID
-  return configs.some((item) => item.id === stored) ? stored : SERVER_DEFAULT_MODEL_ID
-}
-
-function persistActiveModelId() {
-  if (!canUseStorage()) return
-  window.localStorage.setItem(ACTIVE_MODEL_STORAGE_KEY, activeModelId.value)
-}
-
 function createEmptyModelForm(mode = 'local') {
   return {
     name: '',
     mode,
-    model_name: '',
-    host: 'http://127.0.0.1:11434',
+    model_name: mode === 'local' ? LOCAL_VLLM_MODEL_NAME : DEFAULT_REMOTE_MODEL_NAME,
+    model_path: '',
+    host: LOCAL_VLLM_ENDPOINT,
     api_key: '',
     base_url: '',
     organization: ''
+  }
+}
+
+function buildInteractivePreferencePayload() {
+  return {
+    active_model_id: activeModelId.value,
+    selected_sandbox_environment_id: cleanString(selectedSandboxEnvironmentId.value),
+    saved_model_config: savedModelConfig.value ? { ...savedModelConfig.value } : null
+  }
+}
+
+async function persistInteractivePreference({ silent = false } = {}) {
+  try {
+    await saveUserPreference(INTERACTIVE_PREFERENCE_KEY, buildInteractivePreferencePayload())
+  } catch (error) {
+    if (!silent) {
+      throw error
+    }
+  }
+}
+
+function hydrateInteractivePreference(value) {
+  if (!value || typeof value !== 'object') return
+
+  isHydratingInteractivePreference.value = true
+  try {
+    const normalized = normalizeStoredModelConfig(value.saved_model_config)
+    savedModelConfig.value = normalized
+    const nextActiveId = cleanString(value.active_model_id)
+    activeModelId.value = nextActiveId === SAVED_MODEL_ID && normalized ? SAVED_MODEL_ID : SERVER_DEFAULT_MODEL_ID
+    selectedSandboxEnvironmentId.value = cleanString(value.selected_sandbox_environment_id)
+    if (normalized) {
+      modelForm.value = {
+        name: normalized.name,
+        mode: normalized.mode,
+        model_name: normalized.model_name,
+        model_path: normalized.model_path || '',
+        host: normalized.host || LOCAL_VLLM_ENDPOINT,
+        api_key: normalized.api_key || '',
+        base_url: normalized.base_url || '',
+        organization: normalized.organization || ''
+      }
+    }
+  } finally {
+    isHydratingInteractivePreference.value = false
+  }
+}
+
+async function loadInteractivePreference() {
+  try {
+    const response = await fetchUserPreference(INTERACTIVE_PREFERENCE_KEY)
+    hydrateInteractivePreference(response?.data?.value ?? null)
+  } catch {
+    // preference loading is best-effort
   }
 }
 
@@ -968,15 +960,27 @@ function getModelConfigModal() {
   return modelConfigModalInstance
 }
 
-function startCreateModel(mode = 'local') {
-  editingModelId.value = ''
+function populateModelFormFromConfig(config = null) {
   modelFormError.value = ''
-  modelForm.value = createEmptyModelForm(mode)
+  if (!config) {
+    modelForm.value = createEmptyModelForm('local')
+    return
+  }
+  modelForm.value = {
+    name: config.name,
+    mode: config.mode,
+    model_name: config.model_name,
+    model_path: config.model_path || '',
+    host: config.host || LOCAL_VLLM_ENDPOINT,
+    api_key: config.api_key || '',
+    base_url: config.base_url || '',
+    organization: config.organization || ''
+  }
 }
 
 function openModelConfigModal() {
   isModelMenuOpen.value = false
-  startCreateModel()
+  populateModelFormFromConfig(savedModelConfig.value)
   getModelConfigModal()?.show()
 }
 
@@ -1015,9 +1019,11 @@ function setModelFormMode(mode) {
   modelForm.value = {
     ...modelForm.value,
     mode,
-    host: mode === 'local' ? (normalizeLocalHost(modelForm.value.host) || 'http://127.0.0.1:11434') : modelForm.value.host,
+    model_name: cleanString(modelForm.value.model_name) || (mode === 'local' ? LOCAL_VLLM_MODEL_NAME : DEFAULT_REMOTE_MODEL_NAME),
+    host: mode === 'local' ? (normalizeEndpoint(modelForm.value.host) || LOCAL_VLLM_ENDPOINT) : LOCAL_VLLM_ENDPOINT,
+    model_path: mode === 'local' ? cleanString(modelForm.value.model_path) : '',
     api_key: mode === 'api' ? modelForm.value.api_key : '',
-    base_url: mode === 'api' ? modelForm.value.base_url : '',
+    base_url: mode === 'api' ? normalizeEndpoint(modelForm.value.base_url) : '',
     organization: mode === 'api' ? modelForm.value.organization : ''
   }
 }
@@ -1029,7 +1035,8 @@ function validateModelForm() {
 
   if (!name) return 'Display name is required.'
   if (!modelName) return 'Model name is required.'
-  if (mode === 'local' && !normalizeLocalHost(modelForm.value.host)) return 'Local host is required for local models.'
+  if (mode === 'local' && !cleanString(modelForm.value.model_path)) return 'Local model path is required for local models.'
+  if (mode === 'local' && !normalizeEndpoint(modelForm.value.host)) return 'Local host is required for local models.'
   if (mode === 'api' && !cleanString(modelForm.value.api_key)) return 'API key is required for API models.'
   return ''
 }
@@ -1060,8 +1067,8 @@ function selectModel(modelId, options = {}) {
   const normalizedId = modelOptions.value.some((item) => item.id === modelId) ? modelId : SERVER_DEFAULT_MODEL_ID
   const changed = activeModelId.value !== normalizedId
   activeModelId.value = normalizedId
-  persistActiveModelId()
   isModelMenuOpen.value = false
+  void persistInteractivePreference({ silent: true })
 
   if (changed && !options.silent) {
     notice.value = ''
@@ -1078,11 +1085,14 @@ function buildSelectedModelPayload() {
     name: item.name,
     mode: item.mode,
     provider: item.provider,
-    model_name: item.model_name
+    model_name: item.model_name,
+    model_path: item.model_path || undefined
   }
 
   if (item.mode === 'local') {
-    payload.host = normalizeLocalHost(item.host)
+    payload.api_key = 'local'
+    payload.base_url = normalizeEndpoint(item.host) || LOCAL_VLLM_ENDPOINT
+    payload.client_type = 'openai'
   } else {
     payload.api_key = item.api_key
     if (item.base_url) payload.base_url = item.base_url
@@ -1093,82 +1103,53 @@ function buildSelectedModelPayload() {
   return payload
 }
 
-function saveModelConfig() {
+async function browseLocalModelPath() {
+  modelFormError.value = ''
+  if (!canBrowseLocalDirectory) {
+    modelFormError.value = 'Browse is available only in the Electron desktop app. In browser mode, enter a local model path manually.'
+    return
+  }
+  const selected = await chooseLocalDirectory()
+  if (selected) {
+    modelForm.value.model_path = selected
+  }
+}
+
+async function saveModelConfig() {
   const error = validateModelForm()
   if (error) {
     modelFormError.value = error
     return
   }
 
-  const normalized = normalizeStoredModelConfig({
-    ...modelForm.value,
-    id: editingModelId.value || createModelId()
-  })
+  const normalized = normalizeStoredModelConfig(modelForm.value)
   if (!normalized) {
     modelFormError.value = 'Model configuration is invalid.'
     return
   }
 
-  const nextList = savedModelConfigs.value.filter((item) => item.id !== normalized.id)
-  nextList.unshift(normalized)
-  savedModelConfigs.value = nextList
-  persistModelConfigs()
-
-  const previouslyActiveId = activeModelId.value
-  activeModelId.value = normalized.id
-  persistActiveModelId()
-  if (previouslyActiveId !== normalized.id) {
-    applyConversationResetToAll('Model changed. The next prompt will use the selected model.', {
-      resetWorkspace: false
-    })
-  }
-
-  notice.value = `Using model: ${normalized.name}`
-  isModelMenuOpen.value = false
-  closeModelConfigModal()
-}
-
-function editModelConfig(modelId) {
-  const item = savedModelConfigs.value.find((entry) => entry.id === modelId)
-  if (!item) return
-  editingModelId.value = item.id
   modelFormError.value = ''
-  modelForm.value = {
-    name: item.name,
-    mode: item.mode,
-    model_name: item.model_name,
-    host: item.host,
-    api_key: item.api_key,
-    base_url: item.base_url,
-    organization: item.organization
+  const previouslyActiveId = activeModelId.value
+  const previousSavedModelConfig = savedModelConfig.value ? { ...savedModelConfig.value } : null
+  savedModelConfig.value = normalized
+  activeModelId.value = SAVED_MODEL_ID
+  try {
+    await persistInteractivePreference()
+    if (previouslyActiveId !== SAVED_MODEL_ID) {
+      applyConversationResetToAll('Model changed. The next prompt will use the selected model.', {
+        resetWorkspace: false
+      })
+    }
+    notice.value = `Using model: ${normalized.name}`
+    isModelMenuOpen.value = false
+    closeModelConfigModal()
+  } catch (persistError) {
+    if (previouslyActiveId !== activeModelId.value) {
+      activeModelId.value = previouslyActiveId
+    }
+    savedModelConfig.value = previousSavedModelConfig
+    modelFormError.value = persistError?.message || 'Failed to save model configuration.'
   }
-  getModelConfigModal()?.show()
-}
-
-function useModelConfig(modelId) {
-  selectModel(modelId)
-  notice.value = 'Selected model will be used for the next prompt.'
-  closeModelConfigModal()
-}
-
-function deleteModelConfig(modelId) {
-  if (typeof window !== 'undefined') {
-    const confirmed = window.confirm('Delete this saved model configuration?')
-    if (!confirmed) return
-  }
-
-  const exists = savedModelConfigs.value.some((item) => item.id === modelId)
-  if (!exists) return
-
-  savedModelConfigs.value = savedModelConfigs.value.filter((item) => item.id !== modelId)
-  persistModelConfigs()
-
-  if (activeModelId.value === modelId) {
-    selectModel(SERVER_DEFAULT_MODEL_ID)
-    notice.value = 'Active model was removed. Switched back to Server Default.'
-  }
-
-  if (editingModelId.value === modelId) startCreateModel()
 }
 
 function triggerFilePicker(folderPath = currentTargetFolderPath.value) {
@@ -2267,9 +2248,13 @@ async function submitPrompt() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('pointerdown', handleDocumentPointerDown)
-  refreshAssetTree()
+  await loadInteractivePreference()
+  await Promise.all([
+    refreshAssetTree(),
+    refreshPlatformContextOptions()
+  ])
   nextTick(() => adjustComposerHeight())
 })
 
@@ -2306,13 +2291,12 @@ watch(
   (nextValue, previousValue) => {
     const nextId = cleanString(nextValue)
     const prevId = cleanString(previousValue)
-    if (!hasInitializedSandboxEnvironment.value) {
-      if (nextId) {
-        hasInitializedSandboxEnvironment.value = true
-      }
+    if (isHydratingInteractivePreference.value) {
       return
     }
-    if (!nextId || nextId === prevId) return
+    if (nextId === prevId) return
+    void persistInteractivePreference({ silent: true })
+    if (!nextId && !prevId) return
     syncReset('Environment changed. A new agent session will start on the next prompt.')
   }
 )

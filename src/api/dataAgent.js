@@ -48,6 +48,16 @@ export const searchDatasets = (payload = {}) =>
 
 export const fetchCurrentSession = () => request('/auth/session')
 
+export const fetchUserPreference = (preferenceKey) =>
+  request(`/preferences/${encodeURIComponent(preferenceKey)}`)
+
+export const saveUserPreference = (preferenceKey, value) =>
+  request(`/preferences/${encodeURIComponent(preferenceKey)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value })
+  })
+
 export const createDataset = (payload) =>
   request('/datasets', {
     method: 'POST',

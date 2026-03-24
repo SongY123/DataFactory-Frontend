@@ -37,17 +37,23 @@
                 :disabled="isSubmitting"
               />
 
-              <div class="d-flex align-items-center justify-content-between gap-2">
-                <label class="small text-muted mb-0">Prompt</label>
-                <button class="btn btn-link btn-sm py-0" type="button" @click="resetPromptToTemplate">Reset to Template</button>
+              <div class="prompt-toolbar">
+                <div class="prompt-tab-bar" role="tablist" aria-label="Trajectory prompt configuration tabs">
+                  <button
+                    class="prompt-tab-btn active"
+                    type="button"
+                  >
+                    Synthesis Prompt
+                  </button>
+                </div>
+                <button class="btn btn-link btn-sm py-0 prompt-reset-btn" type="button" @click="resetPromptToTemplate">Reset to Template</button>
               </div>
               <textarea
                 v-model="taskForm.prompt"
                 @input="markPromptCustomized"
-                class="form-control"
+                class="form-control prompt-textarea"
                 rows="11"
                 required
-                placeholder="Describe the synthesis objective, schema constraints, and desired output behavior"
               ></textarea>
               <div class="prompt-placeholder-panel">
                 <div class="small text-muted">Placeholders</div>
@@ -271,8 +277,15 @@
               <h6 class="card-title mb-0">{{ taskPanelMode === 'tasks' ? 'Task List' : `Synthesis Results · Task ${selectedTaskId || '-'}` }}</h6>
               <div class="d-flex align-items-center gap-2">
                 <span class="small text-muted" v-if="taskPanelMode === 'tasks'">Latest {{ tasks.length }} tasks</span>
-                <button v-if="taskPanelMode === 'results'" class="btn btn-outline-secondary btn-sm" type="button" @click="backToTaskList">
-                  Back to Tasks
+                <button
+                  v-if="taskPanelMode === 'results'"
+                  class="btn btn-outline-secondary btn-sm task-back-btn"
+                  type="button"
+                  title="Back to Tasks"
+                  aria-label="Back to Tasks"
+                  @click="backToTaskList"
+                >
+                  <i class="bi bi-arrow-left"></i>
                 </button>
               </div>
             </div>
@@ -407,7 +420,9 @@ import {
   fetchAgenticSynthesisTask,
   fetchAgenticSynthesisTasks,
   fetchDatasets,
-  importPlatformAsset
+  fetchUserPreference,
+  importPlatformAsset,
+  saveUserPreference
 } from '../../api/dataAgent'
 
 const DEFAULT_ACTION_TAGS = ['Analyze', 'Understand', 'Code', 'Execute', 'Answer']
@@ -447,6 +462,7 @@ const API_LLM_BASE_URL = 'https://api.openai.com/v1'
 const API_LLM_MODEL_NAME = 'gpt-4o-mini'
 const LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1'
 const LOCAL_LLM_MODEL_NAME = 'qwen2.5:7b-instruct'
+const TRAJECTORY_PREFERENCE_KEY = 'trajectory_synthesis'
 const DEFAULT_LLM_PARAMS_TEMPLATE = {
   temperature: 0.2,
   top_p: 0.95,
@@ -491,6 +507,7 @@ Tag writing rules:
 
 const isPromptCustomized = ref(false)
 const advancedConfigOpen = ref(false)
+const isHydratingPreference = ref(false)
 
 const taskForm = ref({
   prompt: buildDefaultPrompt(),
@@ -605,6 +622,56 @@ const markPromptCustomized = () => {
   isPromptCustomized.value = true
 }
 
+const clampParallelism = (value) => Math.max(1, Math.min(32, Number(value) || 1))
+
+const buildPreferencePayload = () => ({
+  prompt: String(taskForm.value.prompt || ''),
+  modelProvider: taskForm.value.modelProvider === 'local' ? 'local' : 'api',
+  llmApiKey: String(taskForm.value.llmApiKey || ''),
+  llmBaseUrl: String(taskForm.value.llmBaseUrl || ''),
+  llmModelName: String(taskForm.value.llmModelName || ''),
+  parallelism: clampParallelism(taskForm.value.parallelism),
+  savePath: String(taskForm.value.savePath || ''),
+  sandboxEnvironmentId: String(taskForm.value.sandboxEnvironmentId || ''),
+  llmParamsJson: String(taskForm.value.llmParamsJson || ''),
+  advancedConfigOpen: !!advancedConfigOpen.value
+})
+
+const hydratePreferencePayload = (value) => {
+  if (!value || typeof value !== 'object') return
+
+  isHydratingPreference.value = true
+  try {
+    const provider = value.modelProvider === 'local' ? 'local' : 'api'
+    taskForm.value.modelProvider = provider
+    taskForm.value.prompt = String(value.prompt || '').trim() || buildDefaultPrompt()
+    taskForm.value.llmApiKey = String(value.llmApiKey || '')
+    taskForm.value.llmBaseUrl = String(value.llmBaseUrl || '').trim() || (provider === 'local' ? LOCAL_LLM_BASE_URL : API_LLM_BASE_URL)
+    taskForm.value.llmModelName = String(value.llmModelName || '').trim() || (provider === 'local' ? LOCAL_LLM_MODEL_NAME : API_LLM_MODEL_NAME)
+    taskForm.value.parallelism = clampParallelism(value.parallelism)
+    taskForm.value.savePath = String(value.savePath || '').trim()
+    taskForm.value.sandboxEnvironmentId = String(value.sandboxEnvironmentId || '').trim()
+    taskForm.value.llmParamsJson = String(value.llmParamsJson || '').trim() || JSON.stringify(DEFAULT_LLM_PARAMS_TEMPLATE, null, 2)
+    advancedConfigOpen.value = !!value.advancedConfigOpen
+    isPromptCustomized.value = taskForm.value.prompt !== buildDefaultPrompt()
+  } finally {
+    isHydratingPreference.value = false
+  }
+}
+
+const loadStoredPreference = async () => {
+  try {
+    const response = await fetchUserPreference(TRAJECTORY_PREFERENCE_KEY)
+    hydratePreferencePayload(response?.data?.value ?? null)
+  } catch {
+    // preference loading is best-effort
+  }
+}
+
+const persistPreference = async () => {
+  await saveUserPreference(TRAJECTORY_PREFERENCE_KEY, buildPreferencePayload())
+}
+
 const resetPromptToTemplate = () => {
   isPromptCustomized.value = false
   taskForm.value.prompt = buildDefaultPrompt()
@@ -643,6 +710,7 @@ const browseSavePath = async () => {
 watch(
   () => taskForm.value.modelProvider,
   (provider) => {
+    if (isHydratingPreference.value) return
     if (provider === 'local') {
       if (!taskForm.value.llmBaseUrl || taskForm.value.llmBaseUrl === API_LLM_BASE_URL) {
         taskForm.value.llmBaseUrl = LOCAL_LLM_BASE_URL
@@ -1107,6 +1175,11 @@ const startTask = async () => {
 
   try {
     const llmParamsJson = normalizeLlmParamsJson(taskForm.value.llmParamsJson)
+    try {
+      await persistPreference()
+    } catch {
+      // keep task submission usable even if preference persistence fails
+    }
     const response = await createAgenticSynthesisTask({
       prompt: taskForm.value.prompt,
       action_tags: [...DEFAULT_ACTION_TAGS],
@@ -1114,7 +1187,7 @@ const startTask = async () => {
       llm_base_url: taskForm.value.llmBaseUrl,
       llm_model_name: taskForm.value.llmModelName,
       dataset_ids: selectedDatasetIds,
-      parallelism: Math.max(1, Math.min(32, Number(taskForm.value.parallelism) || 1)),
+      parallelism: clampParallelism(taskForm.value.parallelism),
       save_path: String(taskForm.value.savePath || '').trim() || undefined,
       sandbox_environment_id: String(taskForm.value.sandboxEnvironmentId || '').trim() || undefined,
       llm_params_json: llmParamsJson
@@ -1192,6 +1265,7 @@ const importTaskIntoAssets = async () => {
 
 onMounted(async () => {
   document.addEventListener('click', handleClickOutsideDatasetDropdown)
+  await loadStoredPreference()
   await refreshDatasetOptions()
   await refreshTasks()
   if (autoRefresh.value) {
@@ -1245,6 +1319,55 @@ watch(
 .synthesis-main-row > [class*='col-'] {
   display: flex;
   flex-direction: column;
+}
+
+.prompt-textarea {
+  min-height: 260px;
+  resize: vertical;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.prompt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.prompt-tab-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #f7faff;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.prompt-tab-btn {
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #5f7392;
+  padding: 0.38rem 0.68rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.prompt-tab-btn.active {
+  background: #ffffff;
+  color: #174d94;
+  box-shadow: 0 6px 16px rgba(23, 77, 148, 0.1);
+}
+
+.prompt-reset-btn {
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .prompt-placeholder-panel {
@@ -1456,6 +1579,15 @@ watch(
 .advanced-config-textarea {
   font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.82rem;
+}
+
+.task-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
 }
 
 .result-preview {

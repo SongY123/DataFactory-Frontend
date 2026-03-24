@@ -49,6 +49,16 @@
                 {{ getCellText(row, column) || '-' }}
               </span>
               <button
+                v-else-if="column.kind === 'action'"
+                class="btn btn-outline-secondary btn-sm synthesis-action-button"
+                type="button"
+                :disabled="isActionDisabled(row, column)"
+                :title="getActionTitle(row, column)"
+                @click="emitCellOpen(row, column)"
+              >
+                {{ getActionText(row, column) }}
+              </button>
+              <button
                 v-else
                 class="synthesis-cell-button"
                 type="button"
@@ -117,6 +127,16 @@
                       >
                         {{ getCellText(row, column) || '-' }}
                       </span>
+                      <button
+                        v-else-if="column.kind === 'action'"
+                        class="btn btn-outline-secondary btn-sm synthesis-action-button"
+                        type="button"
+                        :disabled="isActionDisabled(row, column)"
+                        :title="getActionTitle(row, column)"
+                        @click="emitCellOpen(row, column)"
+                      >
+                        {{ getActionText(row, column) }}
+                      </button>
                       <button
                         v-else
                         class="synthesis-cell-button"
@@ -246,11 +266,30 @@ const getCellTitle = (row, column, limit) => {
 }
 
 const emitCellOpen = (row, column) => {
+  if (column?.kind === 'action' && isActionDisabled(row, column)) return
   emit('cell-open', {
     row,
     column,
     value: getCellText(row, column)
   })
+}
+
+const getActionText = (row, column) => {
+  const value = getRawCellValue(row, column)
+  const text = String(value == null ? '' : value).trim()
+  return text || String(column?.actionLabel || column?.label || 'Open')
+}
+
+const getActionTitle = (row, column) => {
+  if (typeof column?.actionTitle === 'function') {
+    return String(column.actionTitle(row) || '').trim()
+  }
+  return getActionText(row, column)
+}
+
+const isActionDisabled = (row, column) => {
+  if (typeof column?.isDisabled === 'function') return !!column.isDisabled(row)
+  return false
 }
 
 const statusClassFor = (row, column) => {
@@ -339,6 +378,10 @@ onBeforeUnmount(() => {
 
 .synthesis-cell-button:hover .synthesis-cell-text {
   color: #174d94;
+}
+
+.synthesis-action-button {
+  white-space: nowrap;
 }
 
 .synthesis-cell-text {

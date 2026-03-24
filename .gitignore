@@ -13,3 +13,6 @@ pnpm-debug.log*
 
 
 tmp/
+build/
+electron/.icon-cache/
+electron/icon.icns

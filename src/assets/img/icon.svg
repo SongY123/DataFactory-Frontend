@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="_图层_1" data-name="图层_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 140 140">
+  <!-- Generator: Adobe Illustrator 29.0.1, SVG Export Plug-In . SVG Version: 2.1.0 Build 192)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: url(#_未命名的渐变_6);
+      }
+
+      .st1 {
+        fill: #2563eb;
+      }
+
+      .st2 {
+        fill: #fff;
+      }
+
+      .st3 {
+        fill: #dbeafe;
+      }
+
+      .st4 {
+        fill: none;
+        stroke: #fff;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 4px;
+      }
+    </style>
+    <linearGradient id="_未命名的渐变_6" data-name="未命名的渐变 6" x1="-46.1" y1="-40.3" x2="180.4" y2="174.9" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect class="st0" width="140" height="140"/>
+  <circle class="st2" cx="70" cy="70" r="18"/>
+  <circle class="st1" cx="70" cy="70" r="7"/>
+  <rect class="st3" x="22" y="22" width="20" height="20" rx="6" ry="6"/>
+  <rect class="st3" x="98" y="22" width="20" height="20" rx="6" ry="6"/>
+  <rect class="st3" x="22" y="98" width="20" height="20" rx="6" ry="6"/>
+  <rect class="st3" x="98" y="98" width="20" height="20" rx="6" ry="6"/>
+  <path class="st4" d="M42,32h16l6,18"/>
+  <path class="st4" d="M98,32h-16l-6,18"/>
+  <path class="st4" d="M42,108h16l6-18"/>
+  <path class="st4" d="M98,108h-16l-6-18"/>
+</svg>
