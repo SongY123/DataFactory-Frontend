@@ -4,27 +4,28 @@
       {{ notice }}
     </div>
 
-    <section class="hero-card">
-      <div class="hero-main">
-        <div>
-          <h2 class="hero-title mb-1">Datasets</h2>
-          <p class="hero-copy mb-0">
-            Manage datasets for downstream data synthesis.
-          </p>
-        </div>
-
-        <div class="hero-meta-strip">
-          <span class="hero-meta-pill">{{ filteredRows.length }} shown</span>
-          <span class="hero-meta-pill">{{ totalDatasetCount }} total</span>
-          <span v-if="importingCount" class="hero-meta-pill accent">{{ importingCount }} importing</span>
-          <span v-if="generatedCount" class="hero-meta-pill">{{ generatedCount }} generated</span>
-        </div>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+      <div>
+        <h4 class="mb-1">Dataset Management</h4>
+        <p class="text-muted mb-0">Register, inspect, and organize datasets for downstream synthesis tasks.</p>
       </div>
+      <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-primary btn-sm dataset-add-icon-btn" type="button" @click="openImportModal" aria-label="Add dataset" title="Add dataset">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+      </div>
+    </div>
 
-      <button class="btn btn-primary hero-add-btn" type="button" @click="openImportModal">
-        Add
-      </button>
-    </section>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-4" v-for="card in statsCards" :key="card.label">
+        <article class="dataset-stats-card h-100">
+          <div class="dataset-stats-card-body py-3">
+            <div class="small text-muted">{{ card.label }}</div>
+            <div class="h4 mb-0 mt-1">{{ card.value }}</div>
+          </div>
+        </article>
+      </div>
+    </div>
 
     <section class="toolbar-card">
       <form class="toolbar-top" @submit.prevent="applySearch">
@@ -406,6 +407,7 @@ const notice = ref('')
 const isLoading = ref(false)
 const isSubmittingUpload = ref(false)
 const isSubmittingHuggingFace = ref(false)
+const autoRefresh = ref(true)
 const currentUsername = ref(getStoredUsername())
 const rawDatasets = ref([])
 const totalDatasetCount = ref(0)
@@ -565,6 +567,11 @@ const datasetRows = computed(() => rawDatasets.value.map((item, index) => normal
 const formatOptions = computed(() => [...formatFilterPresets])
 const languageOptions = computed(() => [...languageFilterPresets])
 const statusOptions = computed(() => [...statusFilterPresets])
+const statsCards = computed(() => [
+  { label: 'Total Datasets', value: totalDatasetCount.value },
+  { label: 'Importing Datasets', value: importingCount.value },
+  { label: 'Generated Datasets', value: generatedCount.value }
+])
 
 const filteredRows = computed(() => {
   return [...datasetRows.value].sort((left, right) => {
@@ -727,11 +734,21 @@ const refreshPolling = () => {
     window.clearInterval(pollingTimer)
     pollingTimer = null
   }
-  if (importingCount.value > 0) {
+  if (autoRefresh.value && importingCount.value > 0) {
     pollingTimer = window.setInterval(() => {
       loadDatasets(true)
     }, 3000)
   }
+}
+
+const refreshAll = async () => {
+  notice.value = ''
+  await loadDatasets()
+}
+
+const toggleAutoRefresh = () => {
+  autoRefresh.value = !autoRefresh.value
+  refreshPolling()
 }
 
 const buildDatasetQueryPayload = () => ({
@@ -857,9 +874,7 @@ onBeforeUnmount(() => {
   gap: 0.85rem;
 }
 
-.hero-card,
-.toolbar-card,
-.dataset-section {
+.dataset-stats-card {
   border: 1px solid rgba(27, 43, 65, 0.08);
   border-radius: 28px;
   background:
@@ -868,76 +883,29 @@ onBeforeUnmount(() => {
   box-shadow: 0 24px 60px rgba(34, 44, 63, 0.08);
 }
 
-.hero-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1.2rem;
+.toolbar-card,
+.dataset-section {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
-.eyebrow {
+.dataset-stats-card {
+  border-radius: 18px;
+  background: #fff;
+}
+
+.dataset-stats-card-body {
+  padding: 1rem 1.1rem;
+}
+
+.dataset-add-icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.7rem;
-  border-radius: 999px;
-  background: rgba(27, 43, 65, 0.08);
-  color: #355070;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.hero-title {
-  margin: 0;
-  color: #172033;
-  font-size: clamp(1.3rem, 1.8vw, 1.7rem);
-  line-height: 1.05;
-}
-
-.hero-copy {
-  max-width: 60ch;
-  color: #5e677a;
-  line-height: 1.45;
-  font-size: 0.94rem;
-}
-
-.hero-main {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-  min-width: 0;
-}
-
-.hero-meta-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.hero-meta-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.32rem 0.68rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.84);
-  border: 1px solid rgba(27, 43, 65, 0.08);
-  color: #445267;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.hero-meta-pill.accent {
-  background: rgba(255, 244, 220, 0.96);
-  color: #9b5b17;
-}
-
-.hero-add-btn {
-  flex-shrink: 0;
-  min-height: 44px;
-  padding-inline: 1rem;
+  justify-content: center;
 }
 
 .toolbar-card {
@@ -1467,15 +1435,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 992px) {
-  .hero-card {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .hero-add-btn {
-    width: 100%;
-  }
-
   .toolbar-top {
     flex-direction: column;
     align-items: stretch;
@@ -1506,7 +1465,6 @@ onBeforeUnmount(() => {
 
 @media (max-width: 768px) {
   .dataset-section,
-  .hero-card,
   .toolbar-card {
     padding: 1rem;
   }

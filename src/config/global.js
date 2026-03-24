@@ -12,7 +12,7 @@ export const workflowModules = [
     compactLabel: 'D',
     label: 'Dataset Management',
     workflowLabel: 'Dataset Management',
-    description: 'Collect, align, and register training datasets.'
+    description: 'Register, inspect, and organize datasets for downstream synthesis tasks'
   },
   {
     name: 'ReasoningDataDistillation',
@@ -20,7 +20,7 @@ export const workflowModules = [
     compactLabel: 'R',
     label: 'Reasoning Data Synthesis',
     workflowLabel: 'Reasoning Data Synthesis',
-    description: 'Synthesize high-quality reasoning traces into reusable training corpora.'
+    description: 'Generate task-aligned reasoning traces as reusable process-level supervision'
   },
   {
     name: 'TrajectorySynthesis',
@@ -28,14 +28,14 @@ export const workflowModules = [
     compactLabel: 'T',
     label: 'Trajectory Synthesis',
     workflowLabel: 'Agentic Trajectory Synthesis',
-    description: 'Generate synthesized trajectories and track task progress.'
+    description: 'Construct grounded multi-step action trajectories through data interactions'
   },
   {
     name: 'AgentInteraction',
     to: '/agent-interaction',
     compactLabel: 'I',
     label: 'Agent Interaction',
-    workflowLabel: 'Agent Interaction',
-    description: 'Validate agent responses with real conversation loops.'
+    workflowLabel: 'Interactive Testing',
+    description: 'Validate agent behavior through natural language interaction and iterative refinement'
   },
 ]

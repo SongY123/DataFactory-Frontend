@@ -112,9 +112,13 @@ const stopBackend = () => {
 
 const registerIpc = () => {
   ipcMain.handle('dialog:choose-directory', async () => {
-    const result = await dialog.showOpenDialog({
+    const targetWindow = BrowserWindow.getFocusedWindow() || mainWindow || BrowserWindow.getAllWindows()[0] || undefined
+    const options = {
       properties: ['openDirectory', 'createDirectory']
-    })
+    }
+    const result = targetWindow
+      ? await dialog.showOpenDialog(targetWindow, options)
+      : await dialog.showOpenDialog(options)
     return result.canceled ? '' : String(result.filePaths?.[0] || '')
   })
 }

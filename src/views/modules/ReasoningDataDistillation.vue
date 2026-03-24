@@ -3,7 +3,7 @@
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
       <div>
         <h4 class="mb-1">Reasoning Data Synthesis</h4>
-        <p class="text-muted mb-0">Configure reasoning synthesis prompts and monitor distilled dataset generation from selected datasets.</p>
+        <p class="text-muted mb-0">Generate task-aligned reasoning traces as reusable process-level supervision</p>
       </div>
       <div class="d-flex align-items-center gap-2">
         <button class="btn btn-outline-secondary btn-sm" type="button" @click="refreshAll" :disabled="isLoading">
@@ -177,12 +177,17 @@
                     class="form-control"
                     placeholder="Leave empty to use backend default output path"
                   >
-                  <button class="btn btn-outline-secondary" type="button" @click="browseSavePath">
+                  <button
+                    class="btn btn-outline-secondary"
+                    type="button"
+                    :title="browseSavePathTitle"
+                    @click="browseSavePath"
+                  >
                     Browse
                   </button>
                 </div>
                 <div class="small text-muted mt-1">
-                  {{ form.savePath || 'Choose a local directory on this computer. In browser mode you can also type an absolute path manually.' }}
+                  {{ savePathHelperText }}
                 </div>
               </div>
 
@@ -259,10 +264,6 @@
 
         <article v-if="selectedTask" class="card border-0 shadow-sm mt-3">
           <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div>
-              <div class="small text-muted">Selected Task</div>
-              <div class="fw-semibold">#{{ selectedTask.id }} · {{ selectedTask.sourceLabel }}</div>
-            </div>
             <div class="d-flex gap-2 flex-wrap">
               <button v-if="selectedTask.generatedDatasetId" class="btn btn-outline-primary btn-sm" type="button" @click="openGeneratedDataset">
                 Open Generated Dataset
@@ -277,10 +278,25 @@
               <h6 class="card-title mb-0">{{ taskPanelMode === 'tasks' ? 'Task List' : `Synthesis Results · Task ${selectedTaskId || '-'}` }}</h6>
               <div class="d-flex align-items-center gap-2">
                 <span class="small text-muted" v-if="taskPanelMode === 'tasks'">Latest {{ tasks.length }} tasks</span>
-                <span class="small text-muted" v-else>Results {{ results.length }}</span>
                 <button v-if="taskPanelMode === 'results'" class="btn btn-outline-secondary btn-sm" type="button" @click="backToTaskList">
                   Back to Tasks
                 </button>
+              </div>
+            </div>
+
+            <div v-if="taskPanelMode === 'results' && selectedTask" class="task-progress-panel">
+              <div class="task-progress-head">
+                <div>
+                  <div class="small text-muted">Current Task Progress</div>
+                  <div class="fw-semibold">{{ selectedTask.sourceLabel }}</div>
+                </div>
+                <div class="small text-muted">{{ selectedTask.progressText }}</div>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="progress flex-grow-1" role="progressbar" :aria-valuenow="selectedTask.progress" aria-valuemin="0" aria-valuemax="100">
+                  <div class="progress-bar" :style="{ width: `${selectedTask.progress}%` }"></div>
+                </div>
+                <span class="small text-muted progress-percent">{{ selectedTask.progress }}%</span>
               </div>
             </div>
 
@@ -328,38 +344,16 @@
                   Loading results...
                 </div>
                 <div v-else class="result-groups-wrap">
-                  <table v-if="results.length" class="table table-sm table-hover align-middle mb-0 results-table-fixed">
-                    <thead class="table-light">
-                    <tr>
-                      <th style="width: 16%">Item</th>
-                      <th style="width: 24%">Prompt</th>
-                      <th style="width: 28%">Reasoning</th>
-                      <th style="width: 22%">Answer</th>
-                      <th style="width: 10%">Status</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr v-for="row in results" :key="row.id">
-                      <td>{{ row.itemKey }}</td>
-                      <td>
-                        <div class="result-preview result-preview-clickable" @click="openResultField(row, 'Prompt', row.promptText)">
-                          {{ previewText(row.promptText) }}
-                        </div>
-                      </td>
-                      <td>
-                        <div class="result-preview result-preview-clickable" @click="openResultField(row, 'Reasoning', row.reasoningText)">
-                          {{ previewText(row.reasoningText) }}
-                        </div>
-                      </td>
-                      <td>
-                        <div class="result-preview result-preview-clickable" @click="openResultField(row, 'Answer', row.answerText)">
-                          {{ previewText(row.answerText) }}
-                        </div>
-                      </td>
-                      <td><span class="badge" :class="statusClass(row.status)">{{ row.status }}</span></td>
-                    </tr>
-                    </tbody>
-                  </table>
+                  <SynthesisResultsTable
+                    v-if="results.length"
+                    :rows="results"
+                    :columns="reasoningResultsColumns"
+                    :get-status-class="statusClass"
+                    overlay-title="Reasoning Data Synthesis"
+                    :count-label-text="`${results.length} results`"
+                    empty-text="No synthesis results for this task."
+                    @cell-open="openReasoningResultCell"
+                  />
                   <div v-else class="text-center text-muted py-3">No synthesis results for this task.</div>
                 </div>
               </div>
@@ -587,7 +581,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
 import { formatAppDateTime } from '../../utils/datetime'
-import { chooseLocalDirectory } from '../../utils/desktop'
+import SynthesisResultsTable from '../../components/SynthesisResultsTable.vue'
+import { chooseLocalDirectory, isElectronRuntime } from '../../utils/desktop'
 import {
   createReasoningDistillationTask,
   fetchDatasetFiles,
@@ -611,6 +606,7 @@ const isLoading = ref(false)
 const isSubmitting = ref(false)
 const notice = ref('')
 const noticeType = ref('info')
+const canBrowseLocalDirectory = isElectronRuntime()
 const autoRefresh = ref(true)
 const datasetOptions = ref([])
 const tasks = ref([])
@@ -643,6 +639,13 @@ const DEFAULT_LLM_PARAMS_TEMPLATE = {
   top_p: 0.95,
   max_tokens: 4096
 }
+const reasoningResultsColumns = [
+  { key: 'itemKey', label: 'Item', width: '16rem', expandedWidth: '20rem' },
+  { key: 'promptText', label: 'Prompt', width: '22rem', expandedWidth: '28rem' },
+  { key: 'reasoningText', label: 'Reasoning', width: '28rem', expandedWidth: '40rem' },
+  { key: 'answerText', label: 'Answer', width: '22rem', expandedWidth: '28rem' },
+  { key: 'status', label: 'Status', width: '8rem', kind: 'status' }
+]
 const PROMPT_PLACEHOLDER_TONES = ['tone-blue', 'tone-green', 'tone-amber', 'tone-rose', 'tone-cyan', 'tone-violet']
 const PROMPT_PLACEHOLDER_PATTERN = /\{([^{}]+)\}/g
 
@@ -811,6 +814,17 @@ const datasetDropdownLabel = computed(() => {
   return 'Select datasets'
 })
 
+const browseSavePathTitle = computed(() => {
+  if (canBrowseLocalDirectory) return 'Choose a local directory'
+  return 'Directory browsing is available in the Electron desktop app only'
+})
+
+const savePathHelperText = computed(() => {
+  if (form.value.savePath) return form.value.savePath
+  if (canBrowseLocalDirectory) return 'Choose a local directory on this computer.'
+  return 'Browser mode cannot open a local directory chooser. Enter an absolute path manually or use the Electron desktop app.'
+})
+
 const setNotice = (message, type = 'info') => {
   notice.value = String(message || '')
   noticeType.value = type
@@ -917,6 +931,10 @@ const normalizeLlmParamsJson = (value) => {
 }
 
 const browseSavePath = async () => {
+  if (!canBrowseLocalDirectory) {
+    setNotice('Browse is available only in the Electron desktop app. In browser mode, enter an absolute path manually.', 'info')
+    return
+  }
   const selected = await chooseLocalDirectory()
   if (selected) {
     form.value.savePath = selected
@@ -1556,6 +1574,10 @@ const openResultField = (row, fieldLabel, fieldValue) => {
   getResultModal()?.show()
 }
 
+const openReasoningResultCell = ({ row, column, value }) => {
+  openResultField(row, column?.label || 'Detail', value)
+}
+
 const closeResultModal = () => {
   getResultModal()?.hide()
 }
@@ -1635,6 +1657,15 @@ onBeforeUnmount(() => {
 .floating-notice {
   box-shadow: 0 8px 24px rgba(16, 36, 66, 0.18);
   border-radius: 10px;
+}
+
+.synthesis-main-row {
+  align-items: stretch;
+}
+
+.synthesis-main-row > [class*='col-'] {
+  display: flex;
+  flex-direction: column;
 }
 
 .prompt-textarea {
@@ -2051,13 +2082,21 @@ onBeforeUnmount(() => {
 }
 
 .task-overview-card {
-  height: auto;
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.task-overview-card :deep(.card-body) {
+  flex: 1;
+  min-height: 0;
 }
 
 .task-overview-table-wrap {
-  height: 360px;
-  max-height: 360px;
-  min-height: 360px;
+  flex: 0 0 auto;
+  height: 500px;
+  min-height: 500px;
+  max-height: 500px;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -2076,12 +2115,35 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0;
+  min-height: 0;
 }
 
 .task-table-centered th,
 .task-table-centered td {
   text-align: center;
   vertical-align: middle;
+}
+
+.task-progress-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.task-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.progress-percent {
+  min-width: 3rem;
+  text-align: right;
 }
 
 .result-modal-pre {
@@ -2101,5 +2163,12 @@ onBeforeUnmount(() => {
 
 :global(.modal-backdrop) {
   z-index: 1390;
+}
+
+@media (max-width: 992px) {
+  .task-progress-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

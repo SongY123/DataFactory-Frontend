@@ -3,7 +3,7 @@
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
       <div>
         <h4 class="mb-1">Agentic Trajectory Synthesis</h4>
-        <p class="text-muted mb-0">Configure synthesis prompts and monitor task execution progress from the backend trajectory workflow.</p>
+        <p class="text-muted mb-0">Construct grounded multi-step action trajectories through data interactions</p>
       </div>
       <div class="d-flex align-items-center gap-2">
         <button class="btn btn-outline-secondary btn-sm" type="button" @click="refreshTasks" :disabled="isLoading">
@@ -37,7 +37,10 @@
                 :disabled="isSubmitting"
               />
 
-              <label class="small text-muted mb-0">Prompt</label>
+              <div class="d-flex align-items-center justify-content-between gap-2">
+                <label class="small text-muted mb-0">Prompt</label>
+                <button class="btn btn-link btn-sm py-0" type="button" @click="resetPromptToTemplate">Reset to Template</button>
+              </div>
               <textarea
                 v-model="taskForm.prompt"
                 @input="markPromptCustomized"
@@ -46,9 +49,19 @@
                 required
                 placeholder="Describe the synthesis objective, schema constraints, and desired output behavior"
               ></textarea>
-              <div class="d-flex align-items-center justify-content-between">
-                <span class="small text-muted">Trajectory example in prompt uses default action tags.</span>
-                <button class="btn btn-link btn-sm py-0" type="button" @click="resetPromptToTemplate">Reset to Template</button>
+              <div class="prompt-placeholder-panel">
+                <div class="small text-muted">Placeholders</div>
+                <div v-if="promptPlaceholders.length" class="prompt-placeholder-list">
+                  <span
+                    v-for="placeholder in promptPlaceholders"
+                    :key="`trajectory-prompt-chip-${placeholder}`"
+                    class="prompt-placeholder-chip"
+                    :class="placeholderToneClass(placeholder)"
+                  >
+                    {{ '{' + placeholder + '}' }}
+                  </span>
+                </div>
+                <div v-else class="small text-muted">No placeholders detected.</div>
               </div>
 
               <div class="mt-1">
@@ -139,6 +152,14 @@
                     >
                       <span class="selected-dataset-name">{{ item.name }}</span>
                       <button
+                        class="selected-dataset-settings"
+                        type="button"
+                        :aria-label="`Configure ${item.name}`"
+                        @click.stop="noopDatasetSettings"
+                      >
+                        <i class="bi bi-gear"></i>
+                      </button>
+                      <button
                         class="selected-dataset-remove"
                         type="button"
                         :aria-label="`Remove ${item.name}`"
@@ -160,12 +181,17 @@
                     class="form-control"
                     placeholder="Leave empty to use backend default output path"
                   >
-                  <button class="btn btn-outline-secondary" type="button" @click="browseSavePath">
+                  <button
+                    class="btn btn-outline-secondary"
+                    type="button"
+                    :title="browseSavePathTitle"
+                    @click="browseSavePath"
+                  >
                     Browse
                   </button>
                 </div>
                 <div class="small text-muted mt-1">
-                  {{ taskForm.savePath || 'Choose a local directory on this computer. In browser mode you can also type an absolute path manually.' }}
+                  {{ savePathHelperText }}
                 </div>
               </div>
 
@@ -245,10 +271,25 @@
               <h6 class="card-title mb-0">{{ taskPanelMode === 'tasks' ? 'Task List' : `Synthesis Results · Task ${selectedTaskId || '-'}` }}</h6>
               <div class="d-flex align-items-center gap-2">
                 <span class="small text-muted" v-if="taskPanelMode === 'tasks'">Latest {{ tasks.length }} tasks</span>
-                <span class="small text-muted" v-else>Results {{ taskResults.length }}</span>
                 <button v-if="taskPanelMode === 'results'" class="btn btn-outline-secondary btn-sm" type="button" @click="backToTaskList">
                   Back to Tasks
                 </button>
+              </div>
+            </div>
+
+            <div v-if="taskPanelMode === 'results' && selectedTask" class="task-progress-panel">
+              <div class="task-progress-head">
+                <div>
+                  <div class="small text-muted">Current Task Progress</div>
+                  <div class="fw-semibold">{{ getTaskDatasetName(selectedTask) }}</div>
+                </div>
+                <div class="small text-muted">{{ selectedTask.workspaceProgressText }}</div>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="progress flex-grow-1" role="progressbar" :aria-valuenow="selectedTask.progress" aria-valuemin="0" aria-valuemax="100">
+                  <div class="progress-bar" :style="{ width: `${selectedTask.progress}%` }"></div>
+                </div>
+                <span class="small text-muted progress-percent">{{ selectedTask.progress }}%</span>
               </div>
             </div>
 
@@ -302,26 +343,15 @@
                         {{ group.workspaceName }}
                         <span class="text-muted">({{ group.items.length }})</span>
                       </div>
-                      <table class="table table-sm table-hover align-middle mb-0 results-table-fixed">
-                        <thead class="table-light">
-                        <tr>
-                          <th style="width: 34%">Question</th>
-                          <th style="width: 34%">Trajectory</th>
-                          <th style="width: 12%">Status</th>
-                          <th style="width: 20%">Evaluation</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <tr v-for="item in group.items" :key="item.id">
-                          <td>
-                            <div class="result-preview result-preview-clickable" @click="openResultField(item, 'Question', item.question)">{{ previewText(item.question) }}</div>
-                          </td>
-                          <td><div class="result-preview result-preview-clickable" @click="openResultField(item, 'Trajectory', item.trajectory)">{{ previewText(item.trajectory) }}</div></td>
-                          <td><span class="badge" :class="statusClass(item.status)">{{ item.status || '-' }}</span></td>
-                          <td><div class="result-preview result-preview-clickable" @click="openResultField(item, 'Evaluation', item.evaluation)">{{ previewText(item.evaluation) }}</div></td>
-                        </tr>
-                        </tbody>
-                      </table>
+                      <SynthesisResultsTable
+                        :rows="group.items"
+                        :columns="trajectoryResultsColumns"
+                        :get-status-class="statusClass"
+                        :overlay-title="`Agentic Trajectory Synthesis · ${group.workspaceName}`"
+                        :count-label-text="`${group.items.length} results`"
+                        empty-text="No synthesis results for this workspace."
+                        @cell-open="openTrajectoryResultCell"
+                      />
                     </section>
                   </template>
                   <div v-else class="text-center text-muted py-3">No synthesis results for this task.</div>
@@ -368,8 +398,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
 import SandboxEnvironmentSelector from '../../components/SandboxEnvironmentSelector.vue'
+import SynthesisResultsTable from '../../components/SynthesisResultsTable.vue'
 import { formatAppDateTime } from '../../utils/datetime'
-import { chooseLocalDirectory } from '../../utils/desktop'
+import { chooseLocalDirectory, isElectronRuntime } from '../../utils/desktop'
 import {
   createAgenticSynthesisTask,
   fetchAgenticSynthesisTaskResults,
@@ -380,6 +411,12 @@ import {
 } from '../../api/dataAgent'
 
 const DEFAULT_ACTION_TAGS = ['Analyze', 'Understand', 'Code', 'Execute', 'Answer']
+const trajectoryResultsColumns = [
+  { key: 'question', label: 'Question', width: '22rem', expandedWidth: '28rem' },
+  { key: 'trajectory', label: 'Trajectory', width: '28rem', expandedWidth: '40rem' },
+  { key: 'status', label: 'Status', width: '8rem', kind: 'status' },
+  { key: 'evaluation', label: 'Evaluation', width: '18rem', expandedWidth: '24rem' }
+]
 const route = useRoute()
 const router = useRouter()
 
@@ -387,6 +424,7 @@ const isLoading = ref(false)
 const isSubmitting = ref(false)
 const notice = ref('')
 const noticeType = ref('info')
+const canBrowseLocalDirectory = isElectronRuntime()
 const autoRefresh = ref(true)
 
 const tasks = ref([])
@@ -414,6 +452,8 @@ const DEFAULT_LLM_PARAMS_TEMPLATE = {
   top_p: 0.95,
   max_tokens: 4096
 }
+const PROMPT_PLACEHOLDER_TONES = ['tone-blue', 'tone-green', 'tone-amber', 'tone-rose', 'tone-cyan', 'tone-violet']
+const PROMPT_PLACEHOLDER_PATTERN = /\{([^{}]+)\}/g
 
 const buildTrajectoryExample = () => DEFAULT_ACTION_TAGS.map((tag) => `<${tag}>...</${tag}>`).join('')
 
@@ -430,6 +470,9 @@ Task requirements:
 3) Then produce an interaction trajectory using Action Tags.
 4) The trajectory must be grounded in the provided file content.
 5) Keep everything in English.
+
+Seed question placeholder:
+{question}
 
 Strict output format (no extra text, no markdown, no explanation):
 Question: <one-sentence question>
@@ -521,10 +564,41 @@ const selectedDatasetItems = computed(() => {
   return datasetOptions.value.filter((item) => taskForm.value.datasetIds.includes(Number(item.id)))
 })
 
+const promptPlaceholders = computed(() => {
+  const promptText = String(taskForm.value.prompt || '')
+  const matches = promptText.match(PROMPT_PLACEHOLDER_PATTERN) || []
+  const values = []
+  const seen = new Set()
+  matches.forEach((match) => {
+    const normalized = match.slice(1, -1).trim()
+    if (!normalized || seen.has(normalized)) return
+    seen.add(normalized)
+    values.push(normalized)
+  })
+  return values
+})
+
+const placeholderToneClass = (placeholder) => {
+  const normalized = String(placeholder || '').trim()
+  const index = promptPlaceholders.value.findIndex((item) => item === normalized)
+  return PROMPT_PLACEHOLDER_TONES[index >= 0 ? index % PROMPT_PLACEHOLDER_TONES.length : 0]
+}
+
 const datasetDropdownLabel = computed(() => {
   if (!taskForm.value.datasetIds.length) return 'Select datasets'
   if (taskForm.value.datasetIds.length === 1) return selectedDatasetNames.value[0] || 'Select datasets'
   return `${taskForm.value.datasetIds.length} datasets selected`
+})
+
+const browseSavePathTitle = computed(() => {
+  if (canBrowseLocalDirectory) return 'Choose a local directory'
+  return 'Directory browsing is available in the Electron desktop app only'
+})
+
+const savePathHelperText = computed(() => {
+  if (taskForm.value.savePath) return taskForm.value.savePath
+  if (canBrowseLocalDirectory) return 'Choose a local directory on this computer.'
+  return 'Browser mode cannot open a local directory chooser. Enter an absolute path manually or use the Electron desktop app.'
 })
 
 const markPromptCustomized = () => {
@@ -556,6 +630,10 @@ const normalizeLlmParamsJson = (value) => {
 }
 
 const browseSavePath = async () => {
+  if (!canBrowseLocalDirectory) {
+    setNotice('Browse is available only in the Electron desktop app. In browser mode, enter an absolute path manually.', 'info')
+    return
+  }
   const selected = await chooseLocalDirectory()
   if (selected) {
     taskForm.value.savePath = selected
@@ -759,6 +837,8 @@ const removeSelectedDataset = (datasetId) => {
   if (!Number.isFinite(targetId) || targetId <= 0) return
   taskForm.value.datasetIds = taskForm.value.datasetIds.filter((id) => Number(id) !== targetId)
 }
+
+const noopDatasetSettings = () => {}
 
 const toggleDatasetDropdown = () => {
   datasetDropdownOpen.value = !datasetDropdownOpen.value
@@ -990,6 +1070,10 @@ const openResultField = (item, fieldLabel, fieldValue) => {
   getResultModal()?.show()
 }
 
+const openTrajectoryResultCell = ({ row, column, value }) => {
+  openResultField(row, column?.label || 'Detail', value)
+}
+
 const closeResultModal = () => {
   getResultModal()?.hide()
 }
@@ -1155,7 +1239,72 @@ watch(
 }
 
 .synthesis-main-row {
-  align-items: flex-start;
+  align-items: stretch;
+}
+
+.synthesis-main-row > [class*='col-'] {
+  display: flex;
+  flex-direction: column;
+}
+
+.prompt-placeholder-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.1rem 0;
+}
+
+.prompt-placeholder-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.prompt-placeholder-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.prompt-placeholder-chip.tone-blue {
+  color: #0b63d1;
+  background: rgba(11, 99, 209, 0.14);
+  border-color: rgba(11, 99, 209, 0.2);
+}
+
+.prompt-placeholder-chip.tone-green {
+  color: #18794e;
+  background: rgba(24, 121, 78, 0.14);
+  border-color: rgba(24, 121, 78, 0.2);
+}
+
+.prompt-placeholder-chip.tone-amber {
+  color: #9a5a00;
+  background: rgba(203, 132, 0, 0.16);
+  border-color: rgba(203, 132, 0, 0.22);
+}
+
+.prompt-placeholder-chip.tone-rose {
+  color: #b42363;
+  background: rgba(180, 35, 99, 0.14);
+  border-color: rgba(180, 35, 99, 0.2);
+}
+
+.prompt-placeholder-chip.tone-cyan {
+  color: #0f6d7a;
+  background: rgba(15, 109, 122, 0.14);
+  border-color: rgba(15, 109, 122, 0.2);
+}
+
+.prompt-placeholder-chip.tone-violet {
+  color: #6d3cc5;
+  background: rgba(109, 60, 197, 0.14);
+  border-color: rgba(109, 60, 197, 0.2);
 }
 
 .dataset-dropdown {
@@ -1251,6 +1400,7 @@ watch(
   font-weight: 600;
 }
 
+.selected-dataset-settings,
 .selected-dataset-remove {
   display: inline-flex;
   align-items: center;
@@ -1263,6 +1413,7 @@ watch(
   color: #466287;
 }
 
+.selected-dataset-settings:hover,
 .selected-dataset-remove:hover {
   background: rgba(42, 65, 102, 0.16);
   color: #223854;
@@ -1355,13 +1506,21 @@ watch(
 }
 
 .task-overview-card {
-  height: auto;
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.task-overview-card :deep(.card-body) {
+  flex: 1;
+  min-height: 0;
 }
 
 .task-overview-table-wrap {
-  height: 360px;
-  max-height: 360px;
-  min-height: 360px;
+  flex: 0 0 auto;
+  height: 500px;
+  min-height: 500px;
+  max-height: 500px;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -1380,6 +1539,7 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0;
+  min-height: 0;
 }
 
 .task-config-form {
@@ -1398,6 +1558,28 @@ watch(
   gap: 0.75rem 1rem;
 }
 
+.task-progress-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.task-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.progress-percent {
+  min-width: 3rem;
+  text-align: right;
+}
+
 .result-modal-pre {
   white-space: pre-wrap;
   word-break: break-word;
@@ -1412,6 +1594,11 @@ watch(
 @media (max-width: 992px) {
   .task-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .task-progress-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>
