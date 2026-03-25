@@ -1,5 +1,6 @@
 <template>
-  <div class="dataset-page">
+  <div class="workflow-module-shell" :style="{ '--chat-panel-width': `${resolvedChatPanelWidth}px` }">
+    <div class="dataset-page">
     <div v-if="notice" class="alert alert-warning py-2 px-3 mb-3" role="alert">
       {{ notice }}
     </div>
@@ -122,7 +123,7 @@
       </div>
     </section>
 
-    <section class="dataset-section">
+    <section ref="datasetSectionRef" class="dataset-section">
       <div class="section-head">
       </div>
 
@@ -385,13 +386,34 @@
         </div>
       </div>
     </div>
+
+    </div>
+    <div
+      class="workflow-module-resizer"
+      :class="{ disabled: isChatCollapsed }"
+      role="separator"
+      aria-orientation="vertical"
+      title="Resize Factory Agent panel"
+      @mousedown.prevent="startChatResize"
+    ></div>
+    <div class="workflow-chat-pane" :class="{ collapsed: isChatCollapsed }">
+      <WorkflowAgentChatPanel
+        page-key="dataset_management"
+        page-title="Dataset Management"
+        page-description="Ask about dataset onboarding, metadata, imports, previews, and downstream workflow choices."
+        :page-context="factoryAgentPageContext"
+        @collapse-change="handleChatCollapseChange"
+        @view-datasets="handleFactoryAgentDatasetView"
+      />
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
+import WorkflowAgentChatPanel from '../../components/WorkflowAgentChatPanel.vue'
 import {
   fetchCurrentSession,
   importHuggingFaceDataset,
@@ -402,6 +424,10 @@ import { getStoredUsername } from '../../api/auth'
 import { formatAppDateTime, toAppTimestamp } from '../../utils/datetime'
 
 const router = useRouter()
+const CHAT_PANEL_MIN_WIDTH = 280
+const CHAT_PANEL_MAX_WIDTH = 620
+const CHAT_PANEL_COLLAPSED_WIDTH = 96
+const CHAT_PANEL_STORAGE_KEY = 'datasetManagementChatPanelWidth'
 
 const notice = ref('')
 const isLoading = ref(false)
@@ -423,6 +449,7 @@ const appliedFormats = ref([])
 const appliedLanguages = ref([])
 const appliedSizeLevels = ref([])
 const appliedStatuses = ref([])
+const agentDatasetOverrideItems = ref([])
 const selectedDatasetFiles = ref([])
 const selectedCoverFile = ref(null)
 const importMode = ref('upload')
@@ -431,8 +458,12 @@ const isFiltersCollapsed = ref(true)
 const importModalRef = ref(null)
 const datasetFilesInputRef = ref(null)
 const coverFileInputRef = ref(null)
+const datasetSectionRef = ref(null)
+const chatPanelWidth = ref(readStoredChatPanelWidth())
+const isChatCollapsed = ref(false)
 let importModalInstance = null
 let pollingTimer = null
+let chatResizeCleanup = null
 
 const datasetForm = ref({
   name: '',
@@ -563,7 +594,10 @@ const normalizeDataset = (item = {}, index = 0) => {
   }
 }
 
-const datasetRows = computed(() => rawDatasets.value.map((item, index) => normalizeDataset(item, index)))
+const datasetRows = computed(() => {
+  const sourceItems = agentDatasetOverrideItems.value.length ? agentDatasetOverrideItems.value : rawDatasets.value
+  return sourceItems.map((item, index) => normalizeDataset(item, index))
+})
 const formatOptions = computed(() => [...formatFilterPresets])
 const languageOptions = computed(() => [...languageFilterPresets])
 const statusOptions = computed(() => [...statusFilterPresets])
@@ -572,6 +606,29 @@ const statsCards = computed(() => [
   { label: 'Importing Datasets', value: importingCount.value },
   { label: 'Generated Datasets', value: generatedCount.value }
 ])
+const resolvedChatPanelWidth = computed(() => (isChatCollapsed.value ? CHAT_PANEL_COLLAPSED_WIDTH : chatPanelWidth.value))
+const factoryAgentPageContext = computed(() => ({
+  dataset_count: Number(totalDatasetCount.value || 0),
+  importing_count: Number(importingCount.value || 0),
+  generated_count: Number(generatedCount.value || 0),
+  current_filters: {
+    name_keyword: String(appliedSearchKeyword.value || ''),
+    format_tags: [...appliedFormats.value],
+    language_tags: [...appliedLanguages.value],
+    size_levels: [...appliedSizeLevels.value],
+    statuses: [...appliedStatuses.value]
+  },
+  visible_datasets: filteredRows.value.slice(0, 20).map((row) => ({
+    id: row.id,
+    name: row.name,
+    note: row.note,
+    status: row.status,
+    source_kind: row.sourceKind,
+    format_tags: [...row.formatTags],
+    language_tags: [...row.languageTags],
+    size: row.size
+  }))
+}))
 
 const filteredRows = computed(() => {
   return [...datasetRows.value].sort((left, right) => {
@@ -595,6 +652,66 @@ const selectedFolderLabel = computed(() => {
   const rootFolder = relative.split('/')[0]
   return `${rootFolder || 'Folder'} · ${selectedDatasetFiles.value.length} files`
 })
+
+function clampChatPanelWidth(value) {
+  const numeric = Number(value || 0)
+  if (!Number.isFinite(numeric)) return 430
+  return Math.max(CHAT_PANEL_MIN_WIDTH, Math.min(CHAT_PANEL_MAX_WIDTH, Math.round(numeric)))
+}
+
+function readStoredChatPanelWidth() {
+  try {
+    return clampChatPanelWidth(window.localStorage.getItem(CHAT_PANEL_STORAGE_KEY))
+  } catch {
+    return 430
+  }
+}
+
+function persistChatPanelWidth() {
+  try {
+    window.localStorage.setItem(CHAT_PANEL_STORAGE_KEY, String(chatPanelWidth.value))
+  } catch {
+    // ignore local persistence failures
+  }
+}
+
+function handleChatCollapseChange(collapsed) {
+  isChatCollapsed.value = !!collapsed
+}
+
+function stopChatResize() {
+  if (typeof chatResizeCleanup === 'function') {
+    chatResizeCleanup()
+    chatResizeCleanup = null
+  }
+}
+
+function startChatResize(event) {
+  if (isChatCollapsed.value) return
+  const startX = Number(event?.clientX || 0)
+  const startWidth = chatPanelWidth.value
+  const previousCursor = document.body.style.cursor
+  const previousUserSelect = document.body.style.userSelect
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+
+  const handlePointerMove = (moveEvent) => {
+    const delta = startX - Number(moveEvent?.clientX || 0)
+    chatPanelWidth.value = clampChatPanelWidth(startWidth + delta)
+  }
+
+  const cleanup = () => {
+    window.removeEventListener('mousemove', handlePointerMove)
+    window.removeEventListener('mouseup', cleanup)
+    document.body.style.cursor = previousCursor
+    document.body.style.userSelect = previousUserSelect
+    persistChatPanelWidth()
+  }
+
+  chatResizeCleanup = cleanup
+  window.addEventListener('mousemove', handlePointerMove)
+  window.addEventListener('mouseup', cleanup)
+}
 
 const selectedCoverLabel = computed(() => selectedCoverFile.value?.name || 'No cover selected')
 
@@ -654,6 +771,7 @@ const toggleFilterSelection = (group, value) => {
 }
 
 const applySearch = async () => {
+  agentDatasetOverrideItems.value = []
   appliedSearchKeyword.value = pendingSearchKeyword.value.trim()
   appliedFormats.value = [...selectedFormats.value]
   appliedLanguages.value = [...selectedLanguages.value]
@@ -698,10 +816,22 @@ const extraTagCount = (row) => {
 }
 
 const clearFilters = () => {
+  agentDatasetOverrideItems.value = []
   selectedFormats.value = []
   selectedLanguages.value = []
   selectedSizeLevels.value = []
   selectedStatuses.value = []
+}
+
+const handleFactoryAgentDatasetView = async (payload = {}) => {
+  const datasetItems = Array.isArray(payload?.datasetItems)
+    ? payload.datasetItems.filter((item) => item && typeof item === 'object')
+    : []
+  if (!datasetItems.length) return
+  agentDatasetOverrideItems.value = datasetItems
+
+  await nextTick()
+  datasetSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 const goToDatasetDetail = (datasetId) => {
@@ -743,6 +873,7 @@ const refreshPolling = () => {
 
 const refreshAll = async () => {
   notice.value = ''
+  agentDatasetOverrideItems.value = []
   await loadDatasets()
 }
 
@@ -862,16 +993,71 @@ onBeforeUnmount(() => {
     window.clearInterval(pollingTimer)
     pollingTimer = null
   }
+  stopChatResize()
   importModalInstance?.dispose()
   importModalInstance = null
 })
 </script>
 
 <style scoped>
+.workflow-module-shell {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.workflow-module-resizer {
+  width: 10px;
+  flex: 0 0 10px;
+  position: relative;
+  cursor: col-resize;
+  align-self: stretch;
+}
+
+.workflow-module-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: #d8e0ec;
+  transition: background 0.18s ease;
+}
+
+.workflow-module-resizer:hover::before {
+  background: #9eb5d7;
+}
+
+.workflow-module-resizer.disabled {
+  cursor: default;
+}
+
+.workflow-module-resizer.disabled::before {
+  background: #e6ebf3;
+}
+
+.workflow-chat-pane {
+  width: var(--chat-panel-width);
+  min-width: var(--chat-panel-width);
+  flex: 0 0 var(--chat-panel-width);
+  min-height: 0;
+  transition: width 0.18s ease, min-width 0.18s ease, flex-basis 0.18s ease;
+}
+
 .dataset-page {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+  overflow: auto;
+  padding-right: 0.2rem;
 }
 
 .dataset-stats-card {
@@ -1081,6 +1267,28 @@ onBeforeUnmount(() => {
   background:
     radial-gradient(circle at top right, rgba(255, 220, 150, 0.55), transparent 33%),
     linear-gradient(135deg, #ded4bf 0%, #e8e1d0 45%, #f7f3ea 100%);
+}
+
+@media (max-width: 1280px) {
+  .workflow-module-shell {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  .workflow-module-resizer {
+    display: none;
+  }
+
+  .workflow-chat-pane {
+    width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+  }
+
+  .dataset-page {
+    overflow: visible;
+  }
 }
 
 .dataset-cover,

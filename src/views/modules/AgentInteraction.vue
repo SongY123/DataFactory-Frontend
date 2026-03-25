@@ -603,7 +603,7 @@
 
 <script setup>
 import { Modal } from 'bootstrap'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SandboxEnvironmentSelector from '../../components/SandboxEnvironmentSelector.vue'
 import {
@@ -2458,6 +2458,12 @@ onMounted(async () => {
     refreshPlatformContextOptions()
   ])
   nextTick(() => adjustComposerHeight())
+})
+
+onActivated(async () => {
+  await loadInteractivePreference()
+  await nextTick()
+  adjustComposerHeight()
 })
 
 onBeforeUnmount(() => {

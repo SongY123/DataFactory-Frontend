@@ -1,5 +1,6 @@
 <template>
-  <div class="module-page">
+  <div class="workflow-module-shell" :style="{ '--chat-panel-width': `${resolvedChatPanelWidth}px` }">
+    <div class="module-page">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
       <div>
         <h4 class="mb-1">Agentic Trajectory Synthesis</h4>
@@ -403,6 +404,26 @@
         </div>
       </div>
     </div>
+
+    </div>
+    <div
+      class="workflow-module-resizer"
+      :class="{ disabled: isChatCollapsed }"
+      role="separator"
+      aria-orientation="vertical"
+      title="Resize Factory Agent panel"
+      @mousedown.prevent="startChatResize"
+    ></div>
+    <div class="workflow-chat-pane" :class="{ collapsed: isChatCollapsed }">
+      <WorkflowAgentChatPanel
+        page-key="agentic_trajectory_synthesis"
+        page-title="Agentic Trajectory Synthesis"
+        page-description="Ask about prompts, datasets, environments, save paths, and trajectory synthesis settings."
+        :page-context="factoryAgentPageContext"
+        @collapse-change="handleChatCollapseChange"
+        @apply-prompt="handleFactoryAgentPromptApply"
+      />
+    </div>
   </div>
 </template>
 
@@ -412,6 +433,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Modal } from 'bootstrap'
 import SandboxEnvironmentSelector from '../../components/SandboxEnvironmentSelector.vue'
 import SynthesisResultsTable from '../../components/SynthesisResultsTable.vue'
+import WorkflowAgentChatPanel from '../../components/WorkflowAgentChatPanel.vue'
 import { formatAppDateTime } from '../../utils/datetime'
 import { chooseLocalDirectory, isElectronRuntime } from '../../utils/desktop'
 import {
@@ -434,6 +456,10 @@ const trajectoryResultsColumns = [
 ]
 const route = useRoute()
 const router = useRouter()
+const CHAT_PANEL_MIN_WIDTH = 280
+const CHAT_PANEL_MAX_WIDTH = 620
+const CHAT_PANEL_COLLAPSED_WIDTH = 96
+const CHAT_PANEL_STORAGE_KEY = 'trajectorySynthesisChatPanelWidth'
 
 const isLoading = ref(false)
 const isSubmitting = ref(false)
@@ -454,9 +480,12 @@ const datasetOptions = ref([])
 const datasetDropdownOpen = ref(false)
 const datasetDropdownRef = ref(null)
 const resultModalRef = ref(null)
+const chatPanelWidth = ref(readStoredChatPanelWidth())
+const isChatCollapsed = ref(false)
 const resultModalTitle = ref('Result Detail')
 const resultModalContent = ref('')
 let resultModalInstance = null
+let chatResizeCleanup = null
 
 const API_LLM_BASE_URL = 'https://api.openai.com/v1'
 const API_LLM_MODEL_NAME = 'gpt-4o-mini'
@@ -581,6 +610,25 @@ const selectedDatasetItems = computed(() => {
   return datasetOptions.value.filter((item) => taskForm.value.datasetIds.includes(Number(item.id)))
 })
 
+const factoryAgentPageContext = computed(() => ({
+  active_prompt_tab: 'synthesis',
+  synthesis_prompt: String(taskForm.value.prompt || ''),
+  default_synthesis_prompt: buildDefaultPrompt(),
+  default_action_tags: [...DEFAULT_ACTION_TAGS],
+  selected_dataset_ids: taskForm.value.datasetIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0),
+  selected_dataset_names: [...selectedDatasetNames.value],
+  selected_task: selectedTask.value
+    ? {
+        id: selectedTask.value.id,
+        status: selectedTask.value.status,
+        dataset_name: getTaskDatasetName(selectedTask.value),
+        progress: selectedTask.value.progress
+      }
+    : null
+}))
+
 const promptPlaceholders = computed(() => {
   const promptText = String(taskForm.value.prompt || '')
   const matches = promptText.match(PROMPT_PLACEHOLDER_PATTERN) || []
@@ -618,6 +666,91 @@ const savePathHelperText = computed(() => {
   return 'Browser mode cannot open a local directory chooser. Enter an absolute path manually or use the Electron desktop app.'
 })
 
+const resolvedChatPanelWidth = computed(() => (isChatCollapsed.value ? CHAT_PANEL_COLLAPSED_WIDTH : chatPanelWidth.value))
+
+function clampChatPanelWidth(value) {
+  const numeric = Number(value || 0)
+  if (!Number.isFinite(numeric)) return 430
+  return Math.max(CHAT_PANEL_MIN_WIDTH, Math.min(CHAT_PANEL_MAX_WIDTH, Math.round(numeric)))
+}
+
+function readStoredChatPanelWidth() {
+  try {
+    return clampChatPanelWidth(window.localStorage.getItem(CHAT_PANEL_STORAGE_KEY))
+  } catch {
+    return 430
+  }
+}
+
+function persistChatPanelWidth() {
+  try {
+    window.localStorage.setItem(CHAT_PANEL_STORAGE_KEY, String(chatPanelWidth.value))
+  } catch {
+    // ignore local persistence failures
+  }
+}
+
+function handleChatCollapseChange(collapsed) {
+  isChatCollapsed.value = !!collapsed
+}
+
+function handleFactoryAgentPromptApply(payload) {
+  const prompt = String(payload?.prompt || '').trim()
+  if (!prompt) return
+  taskForm.value.prompt = prompt
+  isPromptCustomized.value = true
+  const changes = Array.isArray(payload?.changes)
+    ? payload.changes.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+  const actionSequence = Array.isArray(payload?.actionSequence || payload?.action_sequence)
+    ? (payload?.actionSequence || payload?.action_sequence).map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+  const summaryParts = []
+  if (changes.length) {
+    summaryParts.push(changes.slice(0, 3).join(' · '))
+  }
+  if (actionSequence.length) {
+    summaryParts.push(`Action sequence: ${actionSequence.join(' → ')}`)
+  }
+  const suffix = summaryParts.length ? ` ${summaryParts.join(' | ')}` : ''
+  setNotice(`Applied Synthesis Prompt from Factory Agent.${suffix}`, 'success')
+  void persistPreference()
+}
+
+function stopChatResize() {
+  if (typeof chatResizeCleanup === 'function') {
+    chatResizeCleanup()
+    chatResizeCleanup = null
+  }
+}
+
+function startChatResize(event) {
+  if (isChatCollapsed.value) return
+  const startX = Number(event?.clientX || 0)
+  const startWidth = chatPanelWidth.value
+  const previousCursor = document.body.style.cursor
+  const previousUserSelect = document.body.style.userSelect
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+
+  const handlePointerMove = (moveEvent) => {
+    const delta = startX - Number(moveEvent?.clientX || 0)
+    chatPanelWidth.value = clampChatPanelWidth(startWidth + delta)
+  }
+
+  const cleanup = () => {
+    window.removeEventListener('mousemove', handlePointerMove)
+    window.removeEventListener('mouseup', cleanup)
+    document.body.style.cursor = previousCursor
+    document.body.style.userSelect = previousUserSelect
+    persistChatPanelWidth()
+  }
+
+  chatResizeCleanup = cleanup
+  window.addEventListener('mousemove', handlePointerMove)
+  window.addEventListener('mouseup', cleanup)
+}
+
 const markPromptCustomized = () => {
   isPromptCustomized.value = true
 }
@@ -630,6 +763,9 @@ const buildPreferencePayload = () => ({
   llmApiKey: String(taskForm.value.llmApiKey || ''),
   llmBaseUrl: String(taskForm.value.llmBaseUrl || ''),
   llmModelName: String(taskForm.value.llmModelName || ''),
+  datasetIds: taskForm.value.datasetIds
+    .map((id) => Number(id))
+    .filter((id, index, array) => Number.isFinite(id) && id > 0 && array.indexOf(id) === index),
   parallelism: clampParallelism(taskForm.value.parallelism),
   savePath: String(taskForm.value.savePath || ''),
   sandboxEnvironmentId: String(taskForm.value.sandboxEnvironmentId || ''),
@@ -648,6 +784,11 @@ const hydratePreferencePayload = (value) => {
     taskForm.value.llmApiKey = String(value.llmApiKey || '')
     taskForm.value.llmBaseUrl = String(value.llmBaseUrl || '').trim() || (provider === 'local' ? LOCAL_LLM_BASE_URL : API_LLM_BASE_URL)
     taskForm.value.llmModelName = String(value.llmModelName || '').trim() || (provider === 'local' ? LOCAL_LLM_MODEL_NAME : API_LLM_MODEL_NAME)
+    taskForm.value.datasetIds = Array.isArray(value.datasetIds)
+      ? value.datasetIds
+        .map((id) => Number(id))
+        .filter((id, index, array) => Number.isFinite(id) && id > 0 && array.indexOf(id) === index)
+      : []
     taskForm.value.parallelism = clampParallelism(value.parallelism)
     taskForm.value.savePath = String(value.savePath || '').trim()
     taskForm.value.sandboxEnvironmentId = String(value.sandboxEnvironmentId || '').trim()
@@ -1279,6 +1420,7 @@ onBeforeUnmount(() => {
     clearTimeout(noticeTimer)
     noticeTimer = null
   }
+  stopChatResize()
   resultModalInstance?.dispose()
   stopPolling()
 })
@@ -1292,10 +1434,64 @@ watch(
 </script>
 
 <style scoped>
+.workflow-module-shell {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.workflow-module-resizer {
+  width: 10px;
+  flex: 0 0 10px;
+  position: relative;
+  cursor: col-resize;
+  align-self: stretch;
+}
+
+.workflow-module-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: #d8e0ec;
+  transition: background 0.18s ease;
+}
+
+.workflow-module-resizer:hover::before {
+  background: #9eb5d7;
+}
+
+.workflow-module-resizer.disabled {
+  cursor: default;
+}
+
+.workflow-module-resizer.disabled::before {
+  background: #e6ebf3;
+}
+
+.workflow-chat-pane {
+  width: var(--chat-panel-width);
+  min-width: var(--chat-panel-width);
+  flex: 0 0 var(--chat-panel-width);
+  min-height: 0;
+  transition: width 0.18s ease, min-width 0.18s ease, flex-basis 0.18s ease;
+}
+
 .module-page {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  overflow: auto;
+  padding-right: 0.2rem;
 }
 
 .floating-notice-wrap {
@@ -1314,6 +1510,28 @@ watch(
 
 .synthesis-main-row {
   align-items: stretch;
+}
+
+@media (max-width: 1280px) {
+  .workflow-module-shell {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  .workflow-module-resizer {
+    display: none;
+  }
+
+  .workflow-chat-pane {
+    width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+  }
+
+  .module-page {
+    overflow: visible;
+  }
 }
 
 .synthesis-main-row > [class*='col-'] {

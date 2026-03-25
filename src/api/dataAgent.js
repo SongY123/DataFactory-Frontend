@@ -58,6 +58,81 @@ export const saveUserPreference = (preferenceKey, value) =>
     body: JSON.stringify({ value })
   })
 
+export const postWorkflowAssistantChat = (payload) =>
+  request('/workflow-assistant/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  })
+
+export const streamWorkflowAssistantChat = async (
+  payload,
+  { onOpened, onDelta, onDone, onError, signal } = {}
+) => {
+  const res = await fetch(`${config.apiBase}/workflow-assistant/chat/stream`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+    signal
+  })
+
+  if (!res.ok) {
+    throw new Error(await parseError(res))
+  }
+
+  const reader = res.body?.getReader()
+  if (!reader) {
+    throw new Error('Unable to read SSE response stream')
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    let blockEnd = buffer.indexOf('\n\n')
+    while (blockEnd >= 0) {
+      const block = buffer.slice(0, blockEnd)
+      buffer = buffer.slice(blockEnd + 2)
+
+      const lines = block.split('\n')
+      let eventName = 'message'
+      let dataText = ''
+
+      lines.forEach((line) => {
+        if (line.startsWith('event: ')) {
+          eventName = line.slice(7).trim()
+        } else if (line.startsWith('data: ')) {
+          dataText += (dataText ? '\n' : '') + line.slice(6)
+        }
+      })
+
+      if (dataText) {
+        try {
+          const data = JSON.parse(dataText)
+          if (eventName === 'opened') {
+            onOpened?.(data)
+          } else if (eventName === 'delta') {
+            onDelta?.(data)
+          } else if (eventName === 'done') {
+            onDone?.(data)
+          } else if (eventName === 'error') {
+            onError?.(new Error(data?.message || 'Chat stream failed'))
+          }
+        } catch {
+          // ignore malformed event payloads
+        }
+      }
+
+      blockEnd = buffer.indexOf('\n\n')
+    }
+  }
+}
+
 export const createDataset = (payload) =>
   request('/datasets', {
     method: 'POST',

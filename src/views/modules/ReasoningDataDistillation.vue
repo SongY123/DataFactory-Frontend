@@ -1,5 +1,6 @@
 <template>
-  <div class="module-page">
+  <div class="workflow-module-shell" :style="{ '--chat-panel-width': `${resolvedChatPanelWidth}px` }">
+    <div class="module-page">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
       <div>
         <h4 class="mb-1">Reasoning Data Synthesis</h4>
@@ -666,6 +667,26 @@
         </div>
       </div>
     </div>
+
+    </div>
+    <div
+      class="workflow-module-resizer"
+      :class="{ disabled: isChatCollapsed }"
+      role="separator"
+      aria-orientation="vertical"
+      title="Resize Factory Agent panel"
+      @mousedown.prevent="startChatResize"
+    ></div>
+    <div class="workflow-chat-pane" :class="{ collapsed: isChatCollapsed }">
+      <WorkflowAgentChatPanel
+        page-key="reasoning_data_synthesis"
+        page-title="Reasoning Data Synthesis"
+        page-description="Ask about synthesis prompts, placeholder mappings, evaluation design, and task configuration."
+        :page-context="factoryAgentPageContext"
+        @collapse-change="handleChatCollapseChange"
+        @apply-prompt="handleFactoryAgentPromptApply"
+      />
+    </div>
   </div>
 </template>
 
@@ -676,6 +697,7 @@ import { Modal } from 'bootstrap'
 import Chart from 'chart.js/auto'
 import { formatAppDateTime } from '../../utils/datetime'
 import SynthesisResultsTable from '../../components/SynthesisResultsTable.vue'
+import WorkflowAgentChatPanel from '../../components/WorkflowAgentChatPanel.vue'
 import { chooseLocalDirectory, isElectronRuntime } from '../../utils/desktop'
 import {
   createReasoningDistillationTask,
@@ -691,6 +713,10 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const CHAT_PANEL_MIN_WIDTH = 280
+const CHAT_PANEL_MAX_WIDTH = 620
+const CHAT_PANEL_COLLAPSED_WIDTH = 96
+const CHAT_PANEL_STORAGE_KEY = 'reasoningSynthesisChatPanelWidth'
 
 const DEFAULT_STRATEGY = 'step-pruning'
 const DEFAULT_TARGET_MAX_TOKENS = 1024
@@ -720,6 +746,8 @@ const resultModalRef = ref(null)
 const evaluationModalRef = ref(null)
 const evaluationChartCanvasRef = ref(null)
 const datasetConfigModalRef = ref(null)
+const chatPanelWidth = ref(readStoredChatPanelWidth())
+const isChatCollapsed = ref(false)
 const resultModalTitle = ref('Result Detail')
 const resultModalContent = ref('')
 const evaluationModalTitle = ref('Evaluation Detail')
@@ -736,6 +764,7 @@ let resultModalInstance = null
 let evaluationModalInstance = null
 let datasetConfigModalInstance = null
 let evaluationChartInstance = null
+let chatResizeCleanup = null
 
 const API_LLM_BASE_URL = 'https://api.openai.com/v1'
 const API_LLM_MODEL_NAME = 'gpt-4o-mini'
@@ -973,6 +1002,84 @@ const activeEvaluationJsonText = computed(() => {
   }
   return JSON.stringify(payload, null, 2)
 })
+const evaluationSummaryForAgent = computed(() => {
+  if (!selectedTask.value?.evaluationEnabled || !results.value.length) return null
+  const evaluatedRows = results.value.filter((row) => row?.hasEvaluation && row?.evaluation && typeof row.evaluation === 'object')
+  if (!evaluatedRows.length) {
+    return {
+      total_results: results.value.length,
+      evaluated_results: 0
+    }
+  }
+
+  const average_scores = Object.fromEntries(
+    EVALUATION_DIMENSIONS.map((dimension) => {
+      const numericValues = evaluatedRows
+        .map((row) => Number(row?.evaluation?.[dimension]))
+        .filter((value) => Number.isFinite(value))
+      const avg = numericValues.length
+        ? Number((numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length).toFixed(2))
+        : null
+      return [dimension, avg]
+    })
+  )
+
+  const lowQualityExamples = evaluatedRows
+    .map((row) => ({
+      item_key: row.itemKey,
+      correctness: Number(row?.evaluation?.correctness ?? row?.correctness ?? 0),
+      completeness: Number(row?.evaluation?.completeness ?? row?.completeness ?? 0),
+      coherence: Number(row?.evaluation?.coherence ?? row?.coherence ?? 0),
+      prompt_excerpt: previewText(row.promptText, 120),
+      answer_excerpt: previewText(row.answerText, 120)
+    }))
+    .sort((left, right) => {
+      const leftScore = (left.correctness || 0) + (left.completeness || 0) + (left.coherence || 0)
+      const rightScore = (right.correctness || 0) + (right.completeness || 0) + (right.coherence || 0)
+      return leftScore - rightScore
+    })
+    .slice(0, 3)
+
+  return {
+    total_results: results.value.length,
+    evaluated_results: evaluatedRows.length,
+    average_scores,
+    low_quality_examples: lowQualityExamples
+  }
+})
+const taskResultPreviewForAgent = computed(() => {
+  return results.value.slice(0, 5).map((row) => ({
+    item_key: row.itemKey,
+    status: row.status,
+    prompt_excerpt: previewText(row.promptText, 160),
+    reasoning_excerpt: previewText(row.reasoningText, 160),
+    answer_excerpt: previewText(row.answerText, 160),
+    evaluation: row.hasEvaluation && row.evaluation && typeof row.evaluation === 'object'
+      ? Object.fromEntries(
+          EVALUATION_DIMENSIONS.map((dimension) => [dimension, Number.isFinite(Number(row.evaluation[dimension])) ? Number(row.evaluation[dimension]) : null])
+        )
+      : null
+  }))
+})
+const factoryAgentPageContext = computed(() => ({
+  active_prompt_tab: activePromptTab.value === 'evaluation' ? 'evaluation' : 'synthesis',
+  synthesis_prompt: String(form.value.synthesisPrompt || ''),
+  evaluation_enabled: !!form.value.evaluationEnabled,
+  evaluation_prompt: String(form.value.evaluationPrompt || ''),
+  default_synthesis_prompt: buildDefaultPrompt(),
+  default_evaluation_prompt: buildDefaultEvaluationPrompt(),
+  selected_task: selectedTask.value
+    ? {
+        id: selectedTask.value.id,
+        status: selectedTask.value.status,
+        source_label: selectedTask.value.sourceLabel,
+        evaluation_enabled: !!selectedTask.value.evaluationEnabled,
+        progress: selectedTask.value.progress
+      }
+    : null,
+  evaluation_summary: evaluationSummaryForAgent.value,
+  task_result_preview: taskResultPreviewForAgent.value
+}))
 const reasoningResultsColumns = computed(() => {
   const base = [
     { key: 'itemKey', label: 'Item', width: '16rem', expandedWidth: '20rem' },
@@ -1080,6 +1187,90 @@ const savePathHelperText = computed(() => {
   if (canBrowseLocalDirectory) return 'Choose a local directory on this computer.'
   return 'Browser mode cannot open a local directory chooser. Enter an absolute path manually or use the Electron desktop app.'
 })
+
+const resolvedChatPanelWidth = computed(() => (isChatCollapsed.value ? CHAT_PANEL_COLLAPSED_WIDTH : chatPanelWidth.value))
+
+function clampChatPanelWidth(value) {
+  const numeric = Number(value || 0)
+  if (!Number.isFinite(numeric)) return 430
+  return Math.max(CHAT_PANEL_MIN_WIDTH, Math.min(CHAT_PANEL_MAX_WIDTH, Math.round(numeric)))
+}
+
+function readStoredChatPanelWidth() {
+  try {
+    return clampChatPanelWidth(window.localStorage.getItem(CHAT_PANEL_STORAGE_KEY))
+  } catch {
+    return 430
+  }
+}
+
+function persistChatPanelWidth() {
+  try {
+    window.localStorage.setItem(CHAT_PANEL_STORAGE_KEY, String(chatPanelWidth.value))
+  } catch {
+    // ignore local persistence failures
+  }
+}
+
+function handleChatCollapseChange(collapsed) {
+  isChatCollapsed.value = !!collapsed
+}
+
+function stopChatResize() {
+  if (typeof chatResizeCleanup === 'function') {
+    chatResizeCleanup()
+    chatResizeCleanup = null
+  }
+}
+
+function startChatResize(event) {
+  if (isChatCollapsed.value) return
+  const startX = Number(event?.clientX || 0)
+  const startWidth = chatPanelWidth.value
+  const previousCursor = document.body.style.cursor
+  const previousUserSelect = document.body.style.userSelect
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+
+  const handlePointerMove = (moveEvent) => {
+    const delta = startX - Number(moveEvent?.clientX || 0)
+    chatPanelWidth.value = clampChatPanelWidth(startWidth + delta)
+  }
+
+  const cleanup = () => {
+    window.removeEventListener('mousemove', handlePointerMove)
+    window.removeEventListener('mouseup', cleanup)
+    document.body.style.cursor = previousCursor
+    document.body.style.userSelect = previousUserSelect
+    persistChatPanelWidth()
+  }
+
+  chatResizeCleanup = cleanup
+  window.addEventListener('mousemove', handlePointerMove)
+  window.addEventListener('mouseup', cleanup)
+}
+
+function handleFactoryAgentPromptApply(payload) {
+  const target = String(payload?.target || '').trim().toLowerCase() === 'evaluation' ? 'evaluation' : 'synthesis'
+  const prompt = String(payload?.prompt || '').trim()
+  if (!prompt) return
+
+  if (target === 'evaluation') {
+    form.value.evaluationEnabled = true
+    form.value.evaluationPrompt = prompt
+    activePromptTab.value = 'evaluation'
+  } else {
+    form.value.synthesisPrompt = prompt
+    activePromptTab.value = 'synthesis'
+  }
+
+  const changes = Array.isArray(payload?.changes)
+    ? payload.changes.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+  const suffix = changes.length ? ` ${changes.slice(0, 3).join(' · ')}` : ''
+  setNotice(`Applied ${target === 'evaluation' ? 'Evaluation Prompt' : 'Synthesis Prompt'} from Factory Agent.${suffix}`, 'success')
+  void persistPreference()
+}
 
 const setNotice = (message, type = 'info') => {
   notice.value = String(message || '')
@@ -2063,6 +2254,7 @@ onBeforeUnmount(() => {
     clearTimeout(noticeTimer)
     noticeTimer = null
   }
+  stopChatResize()
   destroyEvaluationChart()
   resultModalInstance?.dispose()
   evaluationModalInstance?.dispose()
@@ -2072,10 +2264,64 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.workflow-module-shell {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.workflow-module-resizer {
+  width: 10px;
+  flex: 0 0 10px;
+  position: relative;
+  cursor: col-resize;
+  align-self: stretch;
+}
+
+.workflow-module-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: #d8e0ec;
+  transition: background 0.18s ease;
+}
+
+.workflow-module-resizer:hover::before {
+  background: #9eb5d7;
+}
+
+.workflow-module-resizer.disabled {
+  cursor: default;
+}
+
+.workflow-module-resizer.disabled::before {
+  background: #e6ebf3;
+}
+
+.workflow-chat-pane {
+  width: var(--chat-panel-width);
+  min-width: var(--chat-panel-width);
+  flex: 0 0 var(--chat-panel-width);
+  min-height: 0;
+  transition: width 0.18s ease, min-width 0.18s ease, flex-basis 0.18s ease;
+}
+
 .module-page {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  overflow: auto;
+  padding-right: 0.2rem;
 }
 
 .floating-notice-wrap {
@@ -2094,6 +2340,28 @@ onBeforeUnmount(() => {
 
 .synthesis-main-row {
   align-items: stretch;
+}
+
+@media (max-width: 1280px) {
+  .workflow-module-shell {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  .workflow-module-resizer {
+    display: none;
+  }
+
+  .workflow-chat-pane {
+    width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+  }
+
+  .module-page {
+    overflow: visible;
+  }
 }
 
 .synthesis-main-row > [class*='col-'] {
