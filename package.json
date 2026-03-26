@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "electron:sync-icon": "node electron/sync-icon.mjs",
     "desktop": "npm run build && npm run electron:sync-icon && electron electron/main.mjs",
-    "desktop:dev": "npm run electron:sync-icon && set \"DATAFACTORY_ELECTRON_DEV=1\" && concurrently -k \"vite --host 127.0.0.1 --port 8001\" \"wait-on tcp:127.0.0.1:8001 && electron electron/main.mjs\""
+    "desktop:dev": "DATAFACTORY_ELECTRON_DEV=1 concurrently -k \"npm run electron:sync-icon && vite --host 127.0.0.1 --port 8001\" \"wait-on tcp:127.0.0.1:8001 && electron electron/main.mjs\"",
+    "desktop:package": "npm run build && npm run electron:sync-icon && electron-builder --config electron-builder.config.cjs --mac dir --publish never"
   },
   "dependencies": {
     "bootstrap": "^5.3.8",
@@ -24,6 +25,7 @@
     "@vitejs/plugin-vue": "^6.0.1",
     "concurrently": "^9.2.1",
     "electron": "^37.3.1",
+    "electron-builder": "^24.13.3",
     "vite": "^7.1.12",
     "wait-on": "^8.0.5"
   }

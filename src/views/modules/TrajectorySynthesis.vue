@@ -713,7 +713,7 @@ function handleFactoryAgentPromptApply(payload) {
     summaryParts.push(`Action sequence: ${actionSequence.join(' → ')}`)
   }
   const suffix = summaryParts.length ? ` ${summaryParts.join(' | ')}` : ''
-  setNotice(`Applied Synthesis Prompt from Factory Agent.${suffix}`, 'success')
+  // setNotice(`Applied Synthesis Prompt from Factory Agent.${suffix}`, 'success')
   void persistPreference()
 }
 
@@ -1302,7 +1302,7 @@ const startTask = async () => {
   }
 
   isSubmitting.value = true
-  setNotice('Starting tasks...', 'info')
+  // setNotice('Starting tasks...', 'info')
 
   const selectedDatasetIds = taskForm.value.datasetIds
     .map((id) => Number(id))
@@ -1344,7 +1344,7 @@ const startTask = async () => {
     if (createdTask?.id) {
       await inspectTask(createdTask.id, { silent: true })
     }
-    setNotice('Task started successfully.', 'success')
+    // setNotice('Task started successfully.', 'success')
   } catch (error) {
     setNotice(`Failed to start task. (${error?.message || 'backend error'})`, 'error')
   } finally {

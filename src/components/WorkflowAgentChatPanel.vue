@@ -117,9 +117,6 @@
                       <span v-if="message.datasetSearch?.filters?.formatTags?.length">
                         {{ message.datasetSearch.filters.formatTags.join(', ') }}
                       </span>
-                      <span v-else-if="message.datasetMatches[0]?.formatTags?.length">
-                        {{ message.datasetMatches[0].formatTags.join(', ') }}
-                      </span>
                     </div>
                     <div class="message-dataset-preview">{{ datasetSummaryPreview(message) }}</div>
                   </div>

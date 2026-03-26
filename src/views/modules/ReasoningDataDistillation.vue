@@ -1268,7 +1268,7 @@ function handleFactoryAgentPromptApply(payload) {
     ? payload.changes.map((item) => String(item || '').trim()).filter(Boolean)
     : []
   const suffix = changes.length ? ` ${changes.slice(0, 3).join(' · ')}` : ''
-  setNotice(`Applied ${target === 'evaluation' ? 'Evaluation Prompt' : 'Synthesis Prompt'} from Factory Agent.${suffix}`, 'success')
+  // setNotice(`Applied ${target === 'evaluation' ? 'Evaluation Prompt' : 'Synthesis Prompt'} from Factory Agent.${suffix}`, 'success')
   void persistPreference()
 }
 
@@ -1965,7 +1965,7 @@ const startTask = async () => {
   }
 
   isSubmitting.value = true
-  setNotice('Starting tasks...', 'info')
+  // setNotice('Starting tasks...', 'info')
   try {
     const selectedDatasetIds = form.value.datasetIds
       .map((item) => Number(item))
@@ -2036,9 +2036,9 @@ const startTask = async () => {
     selectedTask.value = successes[0]
     taskPanelMode.value = 'tasks'
     if (failures.length) {
-      setNotice(`Started ${successes.length} task(s), ${failures.length} failed.`, 'error')
+      // setNotice(`Started ${successes.length} task(s), ${failures.length} failed.`, 'error')
     } else {
-      setNotice(`Started ${successes.length} reasoning synthesis task(s).`, 'success')
+      // setNotice(`Started ${successes.length} reasoning synthesis task(s).`, 'success')
     }
     await refreshTasks({ silent: true })
     await inspectTask(selectedTaskId.value, { silent: true })

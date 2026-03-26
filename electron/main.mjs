@@ -1,8 +1,9 @@
 import http from 'node:http'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
 
@@ -10,7 +11,6 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const FRONTEND_ROOT = path.resolve(__dirname, '..')
 const BACKEND_ROOT = path.resolve(FRONTEND_ROOT, '..', 'DataFactory')
-const FRONTEND_DIST_ENTRY = path.resolve(FRONTEND_ROOT, 'dist', 'index.html')
 const APP_ICON_PATH = path.resolve(FRONTEND_ROOT, 'src', 'assets', 'img', 'icon.svg')
 
 const API_HOST = process.env.DATAFACTORY_API_HOST || '127.0.0.1'
@@ -25,21 +25,83 @@ let backendProcess = null
 let backendShutdownTimer = null
 let appIcon = null
 
+const listCondaPythonCandidates = () => {
+  const envRoots = [
+    '/opt/anaconda3/envs',
+    '/opt/miniconda3/envs',
+    path.join(os.homedir(), '.conda', 'envs')
+  ]
+
+  const candidates = []
+  for (const envRoot of envRoots) {
+    if (!existsSync(envRoot)) continue
+    try {
+      for (const name of readdirSync(envRoot)) {
+        const pythonPath = path.join(envRoot, name, 'bin', 'python')
+        if (existsSync(pythonPath)) {
+          candidates.push(pythonPath)
+        }
+      }
+    } catch {
+      // continue
+    }
+  }
+  return candidates
+}
+
+const canRunBackend = (candidate) => {
+  if (!candidate) return false
+  try {
+    const result = spawnSync(
+      candidate,
+      ['-c', 'import fastapi,uvicorn,sqlalchemy,pandas,huggingface_hub,dashscope'],
+      { stdio: 'ignore' }
+    )
+    return result.status === 0
+  } catch {
+    return false
+  }
+}
+
+const isRunnablePython = (candidate) => {
+  if (!candidate) return false
+  try {
+    const result = spawnSync(candidate, ['--version'], { stdio: 'ignore' })
+    return result.status === 0
+  } catch {
+    return false
+  }
+}
+
 const resolvePythonCommand = () => {
+  const projectCandidates = [
+    path.join(BACKEND_ROOT, '.venv', 'bin', 'python'),
+    path.join(BACKEND_ROOT, 'venv', 'bin', 'python'),
+    path.join(path.dirname(BACKEND_ROOT), '.venv', 'bin', 'python')
+  ]
   const candidates = [
     process.env.DATAFACTORY_PYTHON,
     process.env.PYTHON,
+    process.env.CONDA_PREFIX ? path.join(process.env.CONDA_PREFIX, 'bin', 'python') : '',
+    ...projectCandidates,
+    ...listCondaPythonCandidates(),
     'python3',
     'python'
   ].filter(Boolean)
 
-  for (const candidate of candidates) {
-    try {
-      const result = spawnSync(candidate, ['--version'], { stdio: 'ignore' })
-      if (result.status === 0) return candidate
-    } catch {
-      // continue
-    }
+  const seen = new Set()
+  const uniqueCandidates = candidates.filter((candidate) => {
+    if (seen.has(candidate)) return false
+    seen.add(candidate)
+    return true
+  })
+
+  for (const candidate of uniqueCandidates) {
+    if (canRunBackend(candidate)) return candidate
+  }
+
+  for (const candidate of uniqueCandidates) {
+    if (isRunnablePython(candidate)) return candidate
   }
 
   throw new Error('Unable to find a runnable Python executable. Set DATAFACTORY_PYTHON to your backend Python path.')
@@ -125,6 +187,13 @@ const registerIpc = () => {
   })
 }
 
+const resolveRendererEntry = () => {
+  if (app.isPackaged) {
+    return path.resolve(app.getAppPath(), 'dist', 'index.html')
+  }
+  return path.resolve(FRONTEND_ROOT, 'dist', 'index.html')
+}
+
 const createMainWindow = async () => {
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -160,10 +229,11 @@ const createMainWindow = async () => {
     await mainWindow.loadURL(DEV_SERVER_URL)
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
-    if (!existsSync(FRONTEND_DIST_ENTRY)) {
-      throw new Error(`Renderer build not found: ${FRONTEND_DIST_ENTRY}. Run npm run build first.`)
+    const rendererEntry = resolveRendererEntry()
+    if (!existsSync(rendererEntry)) {
+      throw new Error(`Renderer build not found: ${rendererEntry}. Run npm run build first.`)
     }
-    await mainWindow.loadFile(FRONTEND_DIST_ENTRY)
+    await mainWindow.loadFile(rendererEntry)
   }
 }
 

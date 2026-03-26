@@ -369,11 +369,6 @@
                 ></textarea>
               </div>
 
-              <div class="hf-hint">
-                The dataset record will appear immediately after submission. README and metadata can show up while the
-                files continue downloading, and the file explorer will unlock after the download finishes.
-              </div>
-
               <div class="d-flex justify-content-end gap-2">
                 <button class="btn btn-outline-secondary" type="button" @click="closeImportModal">Cancel</button>
                 <button class="btn btn-primary" type="submit" :disabled="isSubmittingHuggingFace">

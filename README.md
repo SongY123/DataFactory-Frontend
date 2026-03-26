@@ -1,6 +1,6 @@
 # DataFactory Frontend
 
-Data Agent training platform frontend, migrated from the main framework of `SpatialText2SQL-Frontend` and refocused to the Data Agent lifecycle.
+Data Agent training platform frontend, focused on the Data Agent lifecycle.
 
 ## Core modules
 
